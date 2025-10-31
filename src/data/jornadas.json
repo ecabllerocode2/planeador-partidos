@@ -1,0 +1,149 @@
+[
+  {
+    "id": "1761172079486_Jornada5",
+    "fechaCreacion": "22 de octubre de 2025, 4:27:59 p.m. UTC-6",
+    "parsedData": {
+      "jornada": "5",
+      "partidos": [
+        {
+          "asistente1": "EDER",
+          "asistente2": "MARA",
+          "categoria": "2015-16",
+          "central": "CHEZ",
+          "dia": "sábado",
+          "hora": "11:05 Hrs",
+          "jornada": "5ta",
+          "local": "Atlético Morelia Ixtapaluca",
+          "sede": "La Era Iztapaluca",
+          "visitante": "UFD"
+        },
+        {
+          "asistente1": "CHEZ",
+          "asistente2": "EDER",
+          "categoria": "2012-13",
+          "central": "MARA",
+          "dia": "sábado",
+          "hora": "12:15 Hrs",
+          "jornada": "5ta",
+          "local": "América Coapa",
+          "sede": "La Era Iztapaluca",
+          "visitante": "Pumas UNAM"
+        },
+        {
+          "asistente1": "MARA",
+          "asistente2": "CHEZ",
+          "categoria": "2017-18",
+          "central": "EDER",
+          "dia": "sábado",
+          "hora": "09:00 Hrs",
+          "jornada": "5ta",
+          "local": "Cruz Azul CDMX",
+          "sede": "Deportivo Oriente",
+          "visitante": "FC Juárez"
+        },
+        {
+          "asistente1": "EDER",
+          "asistente2": "MARA",
+          "categoria": "Libre Varonil",
+          "central": "CHEZ",
+          "dia": "domingo",
+          "hora": "18:00 Hrs",
+          "jornada": "5ta",
+          "local": "Deportivo Jalisco",
+          "sede": "Deportivo Oriente",
+          "visitante": "Chivas Echegaray"
+        }
+      ]
+    }
+  },
+  {
+    "id": "1761172079487_Jornada6",
+    "fechaCreacion": "29 de octubre de 2025, 10:00:00 a.m. UTC-6",
+    "parsedData": {
+      "jornada": "6",
+      "partidos": [
+        {
+          "asistente1": "MARA",
+          "asistente2": "EDGAR",
+          "categoria": "2014-15",
+          "central": "CHEZ",
+          "dia": "sábado",
+          "hora": "10:00 Hrs",
+          "jornada": "6ta",
+          "local": "Pachuca",
+          "sede": "Hacienda de Sol",
+          "visitante": "Tigres"
+        },
+        {
+          "asistente1": "CHEZ",
+          "asistente2": "MARA",
+          "categoria": "2016-17",
+          "central": "EDGAR",
+          "dia": "domingo",
+          "hora": "15:30 Hrs",
+          "jornada": "6ta",
+          "local": "Atlas Jrs",
+          "sede": "Hacienda de Sol",
+          "visitante": "Rayados MX"
+        },
+        {
+          "asistente1": "EDGAR",
+          "asistente2": "CHEZ",
+          "categoria": "Femenil",
+          "central": "MARA",
+          "dia": "domingo",
+          "hora": "17:30 Hrs",
+          "jornada": "6ta",
+          "local": "Monarcas Femenil",
+          "sede": "Deportivo Tlalpan",
+          "visitante": "Guerreras FC"
+        }
+      ]
+    }
+  },
+  {
+    "id": "1761172079488_Jornada7",
+    "fechaCreacion": "05 de noviembre de 2025, 08:30:00 a.m. UTC-6",
+    "parsedData": {
+      "jornada": "7",
+      "partidos": [
+        {
+          "asistente1": "CHEZ",
+          "asistente2": "EDGAR",
+          "categoria": "2011-12",
+          "central": "MARA",
+          "dia": "sábado",
+          "hora": "08:00 Hrs",
+          "jornada": "7ma",
+          "local": "Toluca",
+          "sede": "La Era Iztapaluca",
+          "visitante": "León"
+        },
+        {
+          "asistente1": "MARA",
+          "asistente2": "CHEZ",
+          "categoria": "2013-14",
+          "central": "EDGAR",
+          "dia": "sábado",
+          "hora": "14:00 Hrs",
+          "jornada": "7ma",
+          "local": "América",
+          "sede": "Deportivo Tlalpan",
+          "visitante": "Cruz Azul"
+        },
+        {
+          "asistente1": "EDGAR",
+          "asistente2": "MARA",
+          "categoria": "Libre Femenil",
+          "central": "CHEZ",
+          "dia": "domingo",
+          "hora": "16:00 Hrs",
+          "jornada": "7ma",
+          "local": "Fénix FC",
+          "sede": "Hacienda de Sol",
+          "visitante": "Lobas FC"
+        }
+      ]
+    }
+  }
+]

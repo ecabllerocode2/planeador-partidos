@@ -1,0 +1,30 @@
+{
+  "id_planeacion": "PLAN-20251031-101",
+  "arbitro_creador": "EDGAR",
+  "fecha_creacion": "30 de octubre de 2025",
+  "partido_referencia": "Atlético Morelia Ixtapaluca vs UFD",
+  "objetivos": [
+    "Priorizar la prevención en las áreas de banca y cuerpo técnico.",
+    "Mantener una línea de fuera de juego alta y consistente.",
+    "Comunicación no verbal clara con el árbitro central y asistente 2."
+  ],
+  "datos_equipo_local": {
+    "nombre": "Atlético Morelia Ixtapaluca",
+    "observaciones": "Equipo físico, propenso a protestar faltas al inicio del segundo tiempo.",
+    "jugadores_clave": ["#10 (Capitán - Cuidado con simulación)", "#7 (Velocidad en banda)"]
+  },
+  "datos_equipo_visitante": {
+    "nombre": "UFD",
+    "observaciones": "Juego limpio, pero el portero retrasa el juego consistentemente al final.",
+    "jugadores_clave": ["#9 (Goleador, atento al último hombre)", "#5 (Defensa rudo en córners)"]
+  },
+  "aspectos_clave_reglas": [
+    "Revisar el protocolo de sustituciones en esta liga específica.",
+    "Aplicación estricta de la regla de 6 segundos para el portero visitante."
+  ],
+  "coordinacion_arbitral": {
+    "codigo_faltas": "Brazos cruzados = Faltas leves OK.",
+    "codigo_cambios": "Mano en la oreja = Cambio de decisión.",
+    "minutos_criticos": "Últimos 10 minutos (mayor intensidad y fricción)."
+  }
+}

@@ -3,29 +3,9 @@
 import React, { useState } from 'react';
 import { IoChevronDown, IoChevronUp, IoFootball, IoLocationSharp, IoTime } from 'react-icons/io5';
 import { useNavigate } from 'react-router-dom';
+// FIX: Usamos 'import type' para resolver el error TS1484
+import type { Partido, JornadaData } from '../App';
 
-// Definición de tipos basada en la estructura del JSON simulado
-interface Partido {
-    asistente1: string;
-    asistente2: string;
-    categoria: string;
-    central: string;
-    dia: string;
-    hora: string;
-    jornada: string;
-    local: string;
-    sede: string;
-    visitante: string;
-}
-
-interface JornadaData {
-    id: string;
-    fechaCreacion: string;
-    parsedData: {
-        jornada: string;
-        partidos: Partido[];
-    };
-}
 
 // Interfaz para el componente (usaremos un solo prop para la data)
 interface JornadaCardProps {
@@ -35,20 +15,20 @@ interface JornadaCardProps {
 // --- Componente interno para cada partido (Atomic Design) ---
 const PartidoDetail: React.FC<{ partido: Partido, partidoId: string }> = ({ partido, partidoId }) => {
 
-    const navigate = useNavigate(); // 👈 Inicializamos el hook
+    const navigate = useNavigate();
 
-    // Función de navegación que será llamada al hacer click
+    // La función de navegación usa el ID construido en el padre
     const handleClick = () => {
-        // Navegamos a la ruta de detalle con un ID único. 
-        // Usamos una combinación de la sede, categoría y hora como ID temporal
         navigate(`/partido/${partidoId}`);
     };
 
-    const esMiPartido = (nombre: string) => nombre === "EDGAR";
+    const esMiPartido = (nombre: string) => nombre === "EDGAR"; // Usar el nombre de usuario autenticado aquí
 
     return (
         <button
-            onClick={handleClick} className="border-t border-gray-100 py-3 px-4 bg-white/50 hover:bg-white transition duration-150">
+            onClick={handleClick} 
+            className="w-full text-left border-t border-gray-100 py-3 px-4 bg-white/50 hover:bg-white transition duration-150"
+        >
             <div className="flex justify-between items-start text-sm">
                 <p className="font-medium text-gray-800 flex items-center">
                     <IoFootball className="text-emerald-500 mr-2 text-base" />
@@ -93,10 +73,11 @@ const JornadaCard: React.FC<JornadaCardProps> = ({ jornada }) => {
     // Función para manejar el toggle del acordeón
     const handleToggle = () => setIsOpen(!isOpen);
 
-    const { jornada: numJornada, partidos } = jornada.parsedData;
+    // Acceso directo a la data (ajustado para Firestore)
+    const { jornada: numJornada, partidos } = jornada; 
 
     // Formateo simple de fecha para mejor lectura
-    const fecha = new Date(jornada.fechaCreacion).toLocaleDateString('es-MX', {
+    const fecha = new Date(jornada.fechaExtraccion).toLocaleDateString('es-MX', {
         year: 'numeric', month: 'short', day: 'numeric'
     });
 
@@ -138,7 +119,7 @@ const JornadaCard: React.FC<JornadaCardProps> = ({ jornada }) => {
             >
                 <div className="border-t border-gray-200">
                     {partidos.map((partido, index) => {
-                        // Generamos un ID único para la ruta (e.g., "1761172079486_Jornada5-0")
+                        // Generamos un ID único para la ruta (e.g., "J01-0", "J01-1")
                         const partidoId = `${jornada.id}-${index}`;
 
                         return (

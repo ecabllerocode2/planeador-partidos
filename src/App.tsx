@@ -7,28 +7,28 @@ import Header from "./components/Header"
 import JornadaCard from "./components/JornadaCard"
 import PartidoDetail from "./components/PartidoDetail"; 
 import ModalSubidaArchivos from "./components/ModalSubidaArchivos";
+import StatsView from './components/StatsView'; 
 
 // Importaciones de Firebase
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, query, orderBy, type DocumentData } from 'firebase/firestore'; // ⚠️ Importé DocumentData
+import { getFirestore, collection, onSnapshot, query, orderBy, type DocumentData, getDocs } from 'firebase/firestore'; 
 
 // Importaciones de React Icons
 import { IoMdAddCircle } from "react-icons/io"; 
 import { IoFootball } from "react-icons/io5"; 
 
 // ====================================================================
-// DECLARACIÓN DE VARIABLES GLOBALES (Para el entorno de GitHub Codespaces/Canvas)
+// DECLARACIÓN DE VARIABLES GLOBALES
 // ====================================================================
 declare const __firebase_config: string | undefined;
 declare const __initial_auth_token: string | null | undefined;
 
 
 // ====================================================================
-// INTERFACES CORREGIDAS PARA COINCIDIR CON FIRESTORE
+// INTERFACES (EXPORTADAS PARA USO EN OTROS COMPONENTES)
 // ====================================================================
 
-// Nueva Interfaz para el objeto 'planeacion'
 export interface Planeacion {
     id_planeacion: string;
     arbitro_creador: string;
@@ -46,15 +46,12 @@ export interface Partido {
     local: string;
     visitante: string;
     categoria: string;
-    
-    // ✅ CLAVES REALES DE FIRESTORE
     arbitro_central: string;
     arbitro_linea_1?: string; 
     arbitro_linea_2?: string; 
     campo: string; // Sede
     fecha: string; // Día/Fecha
     hora: string;
-    
     planeacion?: Planeacion; 
 }
 
@@ -62,23 +59,28 @@ export interface JornadaData {
     id: string; 
     fechaExtraccion: string; 
     partidos: Partido[]; 
-    
-    // ✅ CLAVE REAL DE FIRESTORE
     jornadaId: string; 
-    
     estadoPlaneacion?: 'PENDIENTE' | 'PARCIAL' | 'COMPLETA'; 
     ultimaPlaneacion?: Date | string;
 }
 
+// Interfaz para la caché de estadísticas
+export interface StatsCache {
+    [categoria: string]: { 
+        standings: { equipo: string; posicion: string | number; [key: string]: any }[];
+        [key: string]: any;
+    };
+}
+
+
 const JORNADAS_COLLECTION = 'jornadas';
+const STATS_COLLECTION = 'stats_cache';
 
 // ====================================================================
 
-// ====================================================================
-// FUNCIÓN DE CONFIGURACIÓN DE FIREBASE
-// ====================================================================
+// FUNCIÓN DE CONFIGURACIÓN DE FIREBASE 
 const getFirebaseConfig = () => {
-    // 1. Intentar usar la configuración inyectada por el entorno (si existe)
+    // ... (Lógica de configuración de Firebase sin cambios)
     if (typeof __firebase_config !== 'undefined' && __firebase_config) {
         try {
             return JSON.parse(__firebase_config);
@@ -86,8 +88,6 @@ const getFirebaseConfig = () => {
             console.error("Error al parsear __firebase_config.");
         }
     }
-
-    // 2. Usar las variables de entorno de VITE (definidas en .env o Vercel)
     if (import.meta.env.VITE_FIREBASE_API_KEY) {
         return {
             apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -98,8 +98,6 @@ const getFirebaseConfig = () => {
             appId: import.meta.env.VITE_FIREBASE_APP_ID,
         };
     }
-    
-    // 3. Objeto vacío si no hay configuración disponible
     return {};
 };
 
@@ -112,6 +110,7 @@ function App() {
   const location = useLocation(); 
   
   const [jornadas, setJornadas] = useState<JornadaData[]>([]); 
+  const [statsCache, setStatsCache] = useState<StatsCache>({}); 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,28 +120,30 @@ function App() {
   const closeModal = () => setIsModalOpen(false);
   
   const isHome = location.pathname === '/'; 
-  const showFabAndFooter = isHome;
+  
+  // ✅ MANTENEMOS la variable original para controlar el FOOTER y el relleno.
+  // showFabAndFooter es TRUE en '/' y en '/stats' (y se usa para el padding del main)
+  const showFabAndFooter = isHome || location.pathname === '/stats'; 
   
   
-  // --- EFECTO: Inicialización de Firebase y Conexión a Firestore ---
+  // --- EFECTO: Inicialización de Firebase y Conexión a Firestore (sin cambios) ---
   useEffect(() => {
-    // Obtener configuración usando la función que prioriza VITE/dotenv
     const firebaseConfig = getFirebaseConfig();
     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
     
-    // Si falta la clave API, mostramos error
     if (!firebaseConfig || !firebaseConfig.apiKey) {
-      setError("Error: La configuración de Firebase no está disponible. Verifique el archivo .env o las variables de Vercel.");
+      setError("Error: La configuración de Firebase no está disponible.");
       setIsLoading(false);
       return;
     }
     
+    let db: any;
+    
     try {
       const app = initializeApp(firebaseConfig);
-      const db = getFirestore(app);
+      db = getFirestore(app); 
       const auth = getAuth(app);
       
-      // 2. Autenticación anónima/con token
       const authenticate = async () => {
         try {
             if (initialAuthToken) {
@@ -152,31 +153,25 @@ function App() {
             }
         } catch (authError) {
             console.error("Error de autenticación, cayendo a anónimo:", authError);
-            // Intenta de nuevo con anónimo en caso de que el token sea inválido
             await signInAnonymously(auth); 
         }
       };
       authenticate();
       
-      // 3. Crear query y Listener (onSnapshot)
+      
+      // 3. Listener (onSnapshot) para JORNADAS
       const jornadasCollectionRef = collection(db, JORNADAS_COLLECTION);
-      // QUERY CORREGIDA: Usamos 'fechaExtraccion'
       const q = query(jornadasCollectionRef, orderBy('fechaExtraccion', 'desc')); 
       
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const unsubscribeJornadas = onSnapshot(q, (snapshot) => {
         const fetchedJornadas: JornadaData[] = [];
         snapshot.forEach(doc => {
-          // ⚠️ Tipado simplificado. Usamos DocumentData o cualquier para asegurar que el acceso a campos funciona
-          // El tipado complejo (Omit) estaba causando problemas.
           const data = doc.data() as DocumentData; 
           
           fetchedJornadas.push({
             id: doc.id,
             fechaExtraccion: data.fechaExtraccion as string, 
-            
-            // ✅ CORRECCIÓN CLAVE: Usamos 'jornadaId' que es el nombre correcto del campo.
             jornadaId: data.jornadaId as string, 
-            
             partidos: data.partidos as Partido[] || [],
             estadoPlaneacion: data.estadoPlaneacion as JornadaData['estadoPlaneacion'],
             ultimaPlaneacion: data.ultimaPlaneacion as JornadaData['ultimaPlaneacion'],
@@ -187,29 +182,60 @@ function App() {
         setIsLoading(false);
         setError(null);
       }, (err) => {
-        console.error("Firestore Listener Error:", err);
+        console.error("Firestore Listener Error (Jornadas):", err);
         setError(`Error al cargar las jornadas: ${err.message}`);
         setIsLoading(false);
       });
       
-      return () => unsubscribe(); // Limpieza del listener al desmontar
+      
+      // 4. Carga Única de la Colección STATS_CACHE
+      const loadStatsCache = async () => {
+          try {
+              const statsCollectionRef = collection(db, STATS_COLLECTION);
+              const statsSnapshot = await getDocs(statsCollectionRef);
+              const cache: StatsCache = {};
+              
+              statsSnapshot.forEach(doc => {
+                  cache[doc.id] = doc.data() as StatsCache[string];
+              });
+              
+              setStatsCache(cache);
+              console.log(`[App.tsx] StatsCache cargado: ${Object.keys(cache).length} categorías.`);
+          } catch(err) {
+              console.error("Error al cargar StatsCache:", err);
+          }
+      };
+      
+      loadStatsCache();
+      
+      // Limpieza de los listeners
+      return () => {
+        unsubscribeJornadas();
+      }; 
       
     } catch (e) {
       console.error("Error al inicializar Firebase:", e);
       setError("Error crítico al inicializar Firebase. Revise su configuración.");
       setIsLoading(false);
     }
-  }, []); // Se ejecuta solo una vez al montar
+  }, []); 
 
+
+  // Manejo del título del Header
+  const headerTitle = isHome 
+      ? "PLANEACIÓN ARBITRAL" 
+      : location.pathname === '/stats' 
+      ? "CLASIFICACIONES" 
+      : "DETALLE DEL PARTIDO";
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Header titulo={isHome ? "PLANEACIÓN ARBITRAL" : "DETALLE DEL PARTIDO"} />
+      <Header titulo={headerTitle} />
       
       <main className={`flex-grow p-4 md:p-6 lg:p-8 relative ${showFabAndFooter ? 'pb-20' : ''}`}> 
         
         <Routes>
-          {/* Ruta principal: Lista de Jornadas */}
+          {/* 1. Ruta principal: Lista de Jornadas (Home) */}
           <Route path="/" element={
             <> 
               {error && (
@@ -244,30 +270,49 @@ function App() {
             </>
           } />
           
-          {/* Ruta: Detalle de Partido */}
+          {/* 2. Ruta: Detalle de Partido */}
           <Route 
             path="/partido/:partidoId" 
-            element={<PartidoDetail jornadas={jornadas} isLoading={isLoading} />} 
+            element={
+              <PartidoDetail 
+                jornadas={jornadas} 
+                isLoading={isLoading} 
+                statsCache={statsCache}
+              />
+            } 
           /> 
+
+          {/* 3. NUEVA RUTA: Estadísticas */}
+          <Route 
+            path="/stats"
+            element={<StatsView statsCache={statsCache} />} 
+          />
 
         </Routes>
       </main>
       
-      {showFabAndFooter && (
-        <>
-          {/* Botón de Acción Flotante (FAB) */}
-          <button 
-          onClick={openModal}
-            aria-label="Agregar Nueva Planeación"
-            className="fixed bottom-20 right-10
-                       text-6xl text-emerald-500 hover:text-emerald-600 transition-colors 
-                       shadow-lg rounded-full z-50"
-          >
-            <IoMdAddCircle />
-          </button>
-          <Footer />
-        </>
+      {/* ✅ MODIFICACIÓN: Separamos la lógica del FAB. 
+        El FAB solo se muestra si isHome es TRUE (ruta '/')
+      */}
+      {isHome && (
+        <button 
+        onClick={openModal}
+          aria-label="Agregar Nueva Planeación"
+          className="fixed bottom-20 right-10
+                      text-6xl text-emerald-500 hover:text-emerald-600 transition-colors 
+                      shadow-lg rounded-full z-50"
+        >
+          <IoMdAddCircle />
+        </button>
       )}
+
+      {/* ✅ MANTENEMOS la renderización del FOOTER usando la variable original.
+        showFabAndFooter es TRUE en '/' y en '/stats' 
+      */}
+      {showFabAndFooter && (
+        <Footer currentPath={location.pathname} />
+      )}
+      
       <ModalSubidaArchivos 
         isOpen={isModalOpen}
         onClose={closeModal}

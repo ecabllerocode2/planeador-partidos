@@ -1,25 +1,26 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-// Importaciones de Firebase - FUNCIONES
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom'; 
+
+// Las importaciones de Firebase quedan MÍNIMAS (Solo para Auth, si lo necesitas para el backend)
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore'; // No necesitamos doc ni onSnapshot aquí
-// Importación de Firebase - TIPOS/INTERFACES
+// ❌ YA NO NECESITAMOS getFirestore, doc, getDoc 
+// import { getFirestore, doc, getDoc } from 'firebase/firestore'; 
 import type { User } from 'firebase/auth'; 
 
-// ✅ CORRECCIÓN CLAVE: Importamos todos los tipos de App.tsx, incluyendo Planeacion
-import type { JornadaData, Partido, Planeacion } from '../App';
+// Importamos los tipos necesarios desde App.tsx
+import type { JornadaData, Partido, Planeacion, StatsCache } from '../App';
 
 
 // ====================================================================
-// DECLARACIÓN DE VARIABLES GLOBALES (Para el entorno de GitHub Codespaces/Canvas)
+// DECLARACIÓN DE VARIABLES GLOBALES (SIN CAMBIOS)
 // ====================================================================
 declare const __firebase_config: string | undefined;
 declare const __initial_auth_token: string | null | undefined;
 
 
 // ====================================================================
-// ÍCONOS SVG INLINE
+// ÍCONOS SVG INLINE (SIN CAMBIOS)
 // ====================================================================
 const SvgIcon = ({ path, className = 'w-5 h-5', style = {} }: { path: string, className?: string, style?: React.CSSProperties }) => (
     <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -39,22 +40,21 @@ const AlertCircleIcon = (props: any) => ( <SvgIcon path="M12 2C6.477 2 2 6.477 2
 // ====================================================================
 // INTERFACES Y CONSTANTES
 // ====================================================================
-// 🛑 NOTA: Eliminamos la interfaz Planeacion duplicada, ya se importa de App.tsx
 
-// Usamos el tipo Partido (importado de App.tsx) y lo extendemos para el detalle.
 interface PartidoData extends Partido { 
     planeacion?: Planeacion; 
 }
 
+interface EquipoPosicionData {
+    local: string | number | null;
+    visitante: string | number | null;
+}
 
-const JORNADAS_COLLECTION = 'jornadas';
-
-// IMPORTANTE: REEMPLAZA ESTA URL CON LA URL REAL DE TU BACKEND DE VERCEL
 const API_BASE_URL = 'https://planeador-partidos-backend.vercel.app'; 
 
 
 // ====================================================================
-// FUNCIÓN DE CONFIGURACIÓN DE FIREBASE (REPLICADA DESDE APP.TSX)
+// FUNCIÓN DE CONFIGURACIÓN DE FIREBASE (SOLO NECESARIA PARA AUTH)
 // ====================================================================
 const getFirebaseConfig = () => {
     if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -79,39 +79,54 @@ const getFirebaseConfig = () => {
 
 
 // ====================================================================
-// DEFINICIÓN DE PROPS PARA EL COMPONENTE
+// DEFINICIÓN DE PROPS PARA EL COMPONENTE (SE AÑADE statsCache)
 // ====================================================================
 interface PartidoDetailProps {
     jornadas: JornadaData[];
-    isLoading: boolean; // Indica si el componente padre (App) está cargando data de Firestore
+    isLoading: boolean;
+    // ✅ NUEVA PROP: La caché de estadísticas traída de App.tsx
+    statsCache: StatsCache; 
 }
+
+// ====================================================================
+// FUNCIÓN: Normaliza texto para comparación robusta. (SIN CAMBIOS)
+// ====================================================================
+const normalizeText = (text: string) => 
+    text.toLowerCase()
+        .normalize("NFD") 
+        .replace(/[\u0300-\u036f]/g, "") 
+        .replace(/[^a-z0-9]/g, ''); 
 
 
 // ====================================================================
 // COMPONENTE PRINCIPAL
 // ====================================================================
 
-const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAppLoading }) => {
+const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAppLoading, statsCache }) => {
     
     const { partidoId: idRutaCompleto } = useParams<{ partidoId: string }>(); 
     const navigate = useNavigate();
 
-    // 1. Estados de Firebase/Auth (Se mantienen para la función `generarPlaneacion`)
-    // No necesitamos dbInstance aquí, solo el userId para el endpoint
+    // 1. Estados de Auth
+    // ❌ ELIMINAMOS dbInstance
     const [userId, setUserId] = useState<string | null>(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     
-    // 2. Descomponer el ID de la ruta
+    // 2. Descomponer el ID de la ruta (SIN CAMBIOS)
     const [jornadaId, setJornadaId] = useState<string | null>(null);
     const [partidoIndex, setPartidoIndex] = useState<number | null>(null);
     
-    // 3. Estado de la Data y UI
+    // 3. Estado de la Data y UI (SIN CAMBIOS)
     const [partidoData, setPartidoData] = useState<PartidoData | null>(null);
     const [isGenerating, setIsGenerating] = useState(false); 
     const [error, setError] = useState<string | null>(null);
 
 
-    // --- EFECTO 1: Inicialización de Firebase y Auth ---
+    // AGREGADO: Estado de las Posiciones de la tabla de clasificación (SIN CAMBIOS)
+    const [posicionesData, setPosicionesData] = useState<EquipoPosicionData | null>(null);
+
+
+    // --- EFECTO 1: Inicialización de Auth (MANTENEMOS SOLO AUTH) ---
     useEffect(() => {
         const firebaseConfig = getFirebaseConfig();
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -125,10 +140,9 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
 
         try {
             const app = initializeApp(firebaseConfig);
-            // const db = getFirestore(app); // No necesitamos la instancia de DB aquí
+            // ❌ YA NO INICIALIZAMOS FIRESTORE AQUÍ
             const auth = getAuth(app);
-            // setDbInstance(db); // Eliminado
-
+            
             const authenticate = async () => {
                 try {
                     if (initialAuthToken) {
@@ -146,7 +160,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                 if (user) {
                     setUserId(user.uid);
                 } else {
-                    // Usar un ID de sesión anónimo si no hay autenticación, para la referencia
                     setUserId(crypto.randomUUID()); 
                 }
                 setIsAuthReady(true);
@@ -161,39 +174,34 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
         }
     }, []); 
 
-    // --- EFECTO 2: Descomponer ID de Ruta ---
+    // --- EFECTOS 2 y 3 (Descomponer ID y Buscar Partido) SIN CAMBIOS ---
+
     useEffect(() => {
         if (idRutaCompleto) {
-            // El formato esperado es "JornadaID-ÍndicePartido"
             const parts = idRutaCompleto.split('-');
             if (parts.length === 2 && !isNaN(Number(parts[1]))) {
                 setJornadaId(parts[0]);
                 setPartidoIndex(Number(parts[1]));
-                setError(null); // Limpiar error si el ID es válido
+                setError(null);
             } else {
                 setError("Error: El formato del ID del partido no es válido (Ej: J01-1).");
             }
         }
     }, [idRutaCompleto]);
 
-
-    // --- EFECTO 3: Búsqueda del Partido usando las Props (Reemplaza el onSnapshot redundante) ---
     useEffect(() => {
-        // Solo intentamos buscar si la carga principal terminó
         if (isAppLoading || !jornadas.length) {
             setPartidoData(null);
             return;
         }
 
         if (jornadaId && partidoIndex !== null) {
-            // Buscamos el documento de jornada por su 'id' (que es el doc.id de Firestore)
             const jornada = jornadas.find(j => j.id === jornadaId);
             
             if (jornada) {
                 const partido = jornada.partidos[partidoIndex];
                 
                 if (partido) {
-                    // Usamos el partido encontrado, le añadimos el campo planeacion (si existe)
                     setPartidoData(partido as PartidoData);
                     setError(null);
                 } else {
@@ -205,15 +213,69 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                 setPartidoData(null);
             }
         } else if (jornadaId === null && partidoIndex === null) {
-            // Si los IDs de ruta aún no se han descompuesto, esperamos
             setPartidoData(null);
         }
         
-    }, [isAppLoading, jornadas, jornadaId, partidoIndex]); // Depende de las props y estados de ID
+    }, [isAppLoading, jornadas, jornadaId, partidoIndex]);
+
+
+    // ====================================================================
+    // ✅ --- EFECTO 4: Carga de POSICIONES de statsCache (USANDO LA PROP) ---
+    // ====================================================================
+    useEffect(() => {
+        // Ejecutar solo si el partidoData está listo Y si ya tenemos datos en la caché.
+        if (!partidoData || Object.keys(statsCache).length === 0) {
+            setPosicionesData(null);
+            return;
+        }
+
+        const findStandings = () => {
+            setPosicionesData(null); 
+            
+            const { categoria, local, visitante } = partidoData;
+            
+            // 1. Verificar si la categoría existe en la caché
+            const statsEntry = statsCache[categoria];
+            
+            if (!statsEntry) {
+                setPosicionesData({ local: 'N/D', visitante: 'N/D' });
+                return;
+            }
+            
+            const standings = Array.isArray(statsEntry.standings) ? statsEntry.standings : [];
+            
+            if (standings.length === 0) {
+                 setPosicionesData({ local: 'N/D', visitante: 'N/D' });
+                 return;
+            }
+            
+            const normalizedLocal = normalizeText(local);
+            const normalizedVisitante = normalizeText(visitante);
+           
+            
+            // 2. Buscar la posición de cada equipo comparando el texto normalizado
+            const statsLocal = standings.find(s => normalizeText(s.equipo) === normalizedLocal);
+            const statsVisitante = standings.find(s => normalizeText(s.equipo) === normalizedVisitante);
+
+            const posLocal = statsLocal?.posicion || null;
+            const posVisitante = statsVisitante?.posicion || null;
+            
+            
+
+            setPosicionesData({
+                local: posLocal,
+                visitante: posVisitante
+            });
+
+        };
+
+        findStandings();
+        
+    }, [partidoData, statsCache]); // DEPENDEMOS DE PARTIDO DATA Y STATS CACHE (la prop)
 
 
     // *************************************************************
-    // FUNCIÓN DE CONEXIÓN AL BACKEND PARA GENERAR EL PLAN
+    // FUNCIÓN DE CONEXIÓN AL BACKEND PARA GENERAR EL PLAN (SIN CAMBIOS)
     // *************************************************************
     const generarPlaneacion = async () => {
         if (!jornadaId || partidoIndex === null) {
@@ -232,7 +294,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     jornadaId: jornadaId,
-                    // Se envía el índice como string, como lo esperaba tu backend
                     partidoIndex: partidoIndex.toString() 
                 }), 
             });
@@ -244,8 +305,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                 throw new Error(`Error en el servidor: ${details}`);
             }
 
-            console.log("Planeación solicitada. Esperando actualización de Firestore...");
-            // La actualización real vendrá de onSnapshot en el componente padre (App.tsx)
             setError(`Éxito: ${data.message}`);
             
         } catch (err) {
@@ -258,10 +317,11 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
 
 
     // *************************************************************
-    // RENDERIZADO CONDICIONAL DE CONTENIDO
+    // RENDERIZADO (SIN CAMBIOS EN LA LÓGICA DE MOSTRAR POSICIONES/DIAGNÓSTICO)
     // *************************************************************
 
-    // Muestra pantalla de carga si la data principal de Firestore no ha llegado
+    // ... (El resto del renderizado es idéntico a la versión anterior)
+
     if (isAppLoading) { 
         return <div className="p-8 text-center bg-gray-100 min-h-screen flex items-center justify-center">
             <PulseIcon className="text-emerald-500 w-10 h-10 animate-spin mr-3" />
@@ -269,7 +329,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
         </div>;
     }
 
-    // Muestra pantalla de error si no se encuentra el partido después de la carga
     if (!partidoData) {
          return <div className="p-8 text-center bg-red-50 min-h-screen flex flex-col items-center justify-center">
              <AlertCircleIcon className="text-red-500 w-12 h-12 mb-4" />
@@ -286,11 +345,13 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
     }
 
     const currentPlan = partidoData.planeacion;
+    
+    const localPosicion = posicionesData?.local;
+    const visitantePosicion = posicionesData?.visitante;
 
 
     const renderContent = () => {
         if (isGenerating) {
-            // ... (Contenido de carga cuando se genera el plan)
             return (
                 <div className="flex flex-col items-center justify-center p-10 bg-white rounded-lg shadow-lg">
                     <PulseIcon className="text-blue-500 w-12 h-12 animate-pulse" />
@@ -301,7 +362,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
         }
 
         if (error && error.startsWith('No se pudo generar')) {
-            // ... (Contenido de error de generación)
              return (
                 <div className="flex flex-col items-center justify-center p-6 bg-red-50 rounded-lg border border-red-300 shadow-sm">
                     <AlertCircleIcon className="text-red-600 w-8 h-8" />
@@ -312,7 +372,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
         }
         
         if (!currentPlan) {
-            // ... (Contenido de plan no generado)
              return (
                 <div className="flex flex-col items-center justify-center p-10 bg-gray-50 rounded-lg shadow-inner">
                     <h3 className="text-xl font-extrabold text-gray-700 mb-4">
@@ -320,17 +379,15 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                     </h3>
                     <div className="text-center text-gray-500 space-y-1">
                         <p>Categoría: <span className='font-semibold text-blue-600'>{partidoData.categoria}</span></p>
-                        <p className='mt-4'>Presiona "GENERAR NUEVO PLAN" para analizar las estadísticas de **{partidoData.categoria}** y crear la planeación detallada.</p>
+                        <p className='mt-4'>Presiona "GENERAR NUEVO PLAN" para analizar las estadísticas de {partidoData.categoria} y crear la planeación detallada.</p>
                     </div>
                 </div>
             );
         }
         
-        // RENDERIZADO DEL PLAN EXISTENTE
         return (
             <div className="bg-white p-5 rounded-lg shadow-lg border border-gray-100">
 
-                {/* --- SECCIÓN: PREDICCIÓN Y ANÁLISIS --- */}
                 {currentPlan.prediccion && (
                     <div className="mb-6 p-3 bg-blue-50 border-l-4 border-blue-400 rounded-md">
                         <p className="font-semibold text-blue-700 flex items-center mb-1">
@@ -344,13 +401,12 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                         </p>
                     </div>
                 )}
-                {/* --- PLAN TÁCTICO DETALLADO --- */}
+
                 <h3 className="text-xl font-extrabold text-blue-600 border-b pb-2 mb-4 flex items-center">
                     <BuildIcon className="mr-2 w-6 h-6" />
                     PLAN TÁCTICO DETALLADO
                 </h3>
 
-                {/* Objetivos */}
                 <div className="mb-4">
                     <h4 className="font-bold text-gray-700 mb-2 flex items-center"><ListIcon className="mr-2 w-5 h-5 text-emerald-500" /> Objetivos de la Tripleta:</h4>
                     <ul className="list-inside text-gray-600 text-sm space-y-1">
@@ -362,7 +418,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                     </ul>
                 </div>
                 
-                {/* Observaciones de Equipos */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 border-t pt-4">
                     <div>
                         <h4 className="font-bold text-gray-700 mb-1 flex items-center"><PeopleIcon className="mr-2 w-5 h-5 text-red-500" /> {currentPlan.datos_equipo_local.nombre} (Local)</h4>
@@ -376,7 +431,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                     </div>
                 </div>
 
-                {/* Aspectos Clave y Reglas */}
                 <div className="mt-6">
                     <h4 className="font-bold text-gray-700 mb-2 flex items-center"><BulbIcon className="mr-2 w-5 h-5 text-yellow-500" /> Puntos Críticos y Reglas:</h4>
                     <ul className="list-disc list-inside text-gray-600 text-sm space-y-1 ml-4">
@@ -384,7 +438,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                     </ul>
                 </div>
 
-                {/* Coordinación Arbitral */}
                 <div className="mt-6 border-t pt-4">
                     <h4 className="font-bold text-gray-700 mb-2 flex items-center"><CodeIcon className="mr-2 w-5 h-5 text-purple-600" /> Coordinación y Códigos (Tripleta):</h4>
                     <div className="text-sm text-gray-600 space-y-2">
@@ -412,14 +465,31 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                 </button>
                 <div className="text-right">
                     <h2 className="text-xl font-bold text-gray-800">
-                        {partidoData.local} vs {partidoData.visitante}
+                        {partidoData.local} 
+                        {localPosicion && localPosicion !== 'N/D' && localPosicion !== 'Error' && 
+                            <span className="text-sm font-semibold text-emerald-600 ml-2 p-1 bg-gray-200 rounded-full">
+                                {localPosicion}
+                            </span>
+                        }
+                          vs
+                         {visitantePosicion && visitantePosicion !== 'N/D' && visitantePosicion !== 'Error' && 
+                            <span className="text-sm font-semibold text-emerald-600 ml-2 p-1 bg-gray-200 rounded-full">
+                                 {visitantePosicion}
+                            </span>
+                        }
+                        {partidoData.visitante}
+                        
                     </h2>
-                    {/* ✅ CORRECCIÓN: Usamos 'fecha' y no 'dia' */}
                     <p className="text-sm text-gray-500">Cat: <span className="font-medium">{partidoData.categoria}</span> | {partidoData.fecha} {partidoData.hora}</p>
-                    {/* ✅ CORRECCIÓN: Usamos 'arbitro_central' y no 'central' */}
                     <p className="text-xs text-gray-400">Central: {partidoData.arbitro_central}</p>
                 </div>
             </div>
+            
+            
+            {/* --- Mostrar mensaje de error/no disponible para posiciones original (si los valores son N/D o Error) --- */}
+            {(posicionesData?.local === 'Error' || posicionesData?.local === 'N/D') && (
+                 <div className="text-center text-sm text-gray-500 p-2 bg-red-100 rounded-lg">Posiciones no disponibles para esta categoría o error de carga. (Verifique el diagnóstico superior).</div>
+            )}
             
             {/* Meta-datos y Estado de la Planeación */}
             {currentPlan && (

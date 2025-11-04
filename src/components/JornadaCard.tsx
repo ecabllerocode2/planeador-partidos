@@ -1,5 +1,3 @@
-// src/components/JornadaCard.tsx
-
 import React, { useState } from 'react';
 import { IoChevronDown, IoChevronUp, IoFootball, IoLocationSharp, IoTime } from 'react-icons/io5';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +22,12 @@ const PartidoDetail: React.FC<{ partido: Partido, partidoId: string }> = ({ part
 
     const esMiPartido = (nombre: string) => nombre === "EDGAR"; // Usar el nombre de usuario autenticado aquí
 
+    // 🛑 CORRECCIONES APLICADAS
+    const arbitroCentral = partido.arbitro_central || 'Por definir';
+    const arbitroLinea1 = partido.arbitro_linea_1 || 'N/A';
+    const arbitroLinea2 = partido.arbitro_linea_2 || 'N/A';
+    const sedePartido = partido.campo || 'Sede no especificada';
+
     return (
         <button
             onClick={handleClick} 
@@ -43,22 +47,23 @@ const PartidoDetail: React.FC<{ partido: Partido, partidoId: string }> = ({ part
                 <div className="flex items-center justify-between">
                     <p className="flex items-center">
                         <IoTime className="mr-1 text-xs" />
-                        {partido.dia}, {partido.hora}
+                        {partido.fecha}, {partido.hora} {/* Usando 'fecha' y 'hora' */}
                     </p>
                     <p className="flex items-center">
                         <IoLocationSharp className="mr-1 text-xs" />
-                        {partido.sede}
+                        {sedePartido} {/* ✅ Usando 'campo' */}
                     </p>
                 </div>
 
                 {/* Visualización de la cuarteta arbitral */}
                 <p className="text-xs pt-1 border-t border-dashed border-gray-100 mt-1">
                     <span className="font-medium">Central: </span>
-                    <span className={esMiPartido(partido.central) ? "font-bold text-red-600" : "font-semibold text-gray-700"}>
-                        {partido.central}
+                    <span className={esMiPartido(arbitroCentral) ? "font-bold text-red-600" : "font-semibold text-gray-700"}>
+                        {arbitroCentral} {/* ✅ Usando 'arbitro_central' */}
                     </span>
                     <span className="ml-3 font-medium">Asistentes: </span>
-                    {partido.asistente1}, {partido.asistente2}
+                    {/* ✅ Usando 'arbitro_linea_1' y 'arbitro_linea_2' */}
+                    {arbitroLinea1} {arbitroLinea1 !== 'N/A' && arbitroLinea2 !== 'N/A' ? ',' : ''} {arbitroLinea2}
                 </p>
             </div>
         </button>
@@ -73,13 +78,40 @@ const JornadaCard: React.FC<JornadaCardProps> = ({ jornada }) => {
     // Función para manejar el toggle del acordeón
     const handleToggle = () => setIsOpen(!isOpen);
 
-    // Acceso directo a la data (ajustado para Firestore)
-    const { jornada: numJornada, partidos } = jornada; 
+    // 🛑 CORRECCIÓN APLICADA: Usamos 'jornadaId' que es la clave correcta de Firestore
+    const { jornadaId, partidos } = jornada; 
 
-    // Formateo simple de fecha para mejor lectura
-    const fecha = new Date(jornada.fechaExtraccion).toLocaleDateString('es-MX', {
-        year: 'numeric', month: 'short', day: 'numeric'
-    });
+    // ✅ CORRECCIÓN CLAVE: Formateo de fecha robusto que maneja Timestamps de Firebase y strings inválidos.
+    const fecha = (() => {
+        const rawDate = jornada.fechaExtraccion;
+        let dateObj: Date | null = null;
+        
+        if (rawDate) {
+            // 1. Manejar el objeto Firestore Timestamp (si viene sin convertir)
+            // Esto verifica si tiene la estructura típica de un Timestamp: { seconds, nanoseconds, toDate }
+            if (typeof rawDate === 'object' && rawDate !== null && 'seconds' in rawDate && typeof (rawDate as any).toDate === 'function') {
+                dateObj = (rawDate as any).toDate();
+            } 
+            // 2. Intentar manejarlo como string o Date
+            else {
+                const tempDate = new Date(rawDate);
+                if (!isNaN(tempDate.getTime())) {
+                    dateObj = tempDate;
+                }
+            }
+        }
+
+        if (dateObj) {
+            // Si es válido, formateamos
+            return dateObj.toLocaleDateString('es-MX', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+        }
+
+        // 3. Si no es válido (null, undefined, string inválido, o Timestamp malformado)
+        return 'Fecha no disponible';
+    })();
+    // FIN CORRECCIÓN CLAVE
 
     return (
         <div className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-100">
@@ -93,7 +125,7 @@ const JornadaCard: React.FC<JornadaCardProps> = ({ jornada }) => {
                 {/* Información Principal de la Jornada */}
                 <div>
                     <h3 className="text-xl font-extrabold text-gray-800">
-                        JORNADA {numJornada}
+                        {jornadaId} {/* ✅ Usando 'jornadaId' */}
                     </h3>
                     <p className="text-sm text-gray-500 mt-1">
                         {partidos.length} Partidos Asignados

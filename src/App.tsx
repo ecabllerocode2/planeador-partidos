@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom'; 
 
 // Importaciones de Componentes
@@ -11,7 +11,7 @@ import ModalSubidaArchivos from "./components/ModalSubidaArchivos";
 // Importaciones de Firebase
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, query, orderBy } from 'firebase/firestore'; 
+import { getFirestore, collection, onSnapshot, query, orderBy, type DocumentData } from 'firebase/firestore'; // ⚠️ Importé DocumentData
 
 // Importaciones de React Icons
 import { IoMdAddCircle } from "react-icons/io"; 
@@ -25,31 +25,54 @@ declare const __initial_auth_token: string | null | undefined;
 
 
 // ====================================================================
-// INTERFACES (Exportadas)
+// INTERFACES CORREGIDAS PARA COINCIDIR CON FIRESTORE
 // ====================================================================
 
+// Nueva Interfaz para el objeto 'planeacion'
+export interface Planeacion {
+    id_planeacion: string;
+    arbitro_creador: string;
+    fecha_creacion: Date | string; 
+    partido_referencia: string;
+    objetivos: string[];
+    aspectos_clave_reglas: string[];
+    datos_equipo_local: { [key: string]: any }; 
+    datos_equipo_visitante: { [key: string]: any }; 
+    coordinacion_arbitral: { [key: string]: any };
+    prediccion: { [key: string]: any };
+}
+
 export interface Partido {
-  asistente1: string;
-  asistente2: string;
-  categoria: string;
-  central: string;
-  dia: string;
-  hora: string;
-  jornada: string;
-  local: string;
-  sede: string;
-  visitante: string;
+    local: string;
+    visitante: string;
+    categoria: string;
+    
+    // ✅ CLAVES REALES DE FIRESTORE
+    arbitro_central: string;
+    arbitro_linea_1?: string; 
+    arbitro_linea_2?: string; 
+    campo: string; // Sede
+    fecha: string; // Día/Fecha
+    hora: string;
+    
+    planeacion?: Planeacion; 
 }
 
 export interface JornadaData {
-  id: string; 
-  // 🚨 CAMBIO DE NOMBRE DE LA INTERFACE
-  fechaExtraccion: string; 
-  partidos: Partido[]; 
-  jornada: string; 
+    id: string; 
+    fechaExtraccion: string; 
+    partidos: Partido[]; 
+    
+    // ✅ CLAVE REAL DE FIRESTORE
+    jornadaId: string; 
+    
+    estadoPlaneacion?: 'PENDIENTE' | 'PARCIAL' | 'COMPLETA'; 
+    ultimaPlaneacion?: Date | string;
 }
 
 const JORNADAS_COLLECTION = 'jornadas';
+
+// ====================================================================
 
 // ====================================================================
 // FUNCIÓN DE CONFIGURACIÓN DE FIREBASE
@@ -137,20 +160,26 @@ function App() {
       
       // 3. Crear query y Listener (onSnapshot)
       const jornadasCollectionRef = collection(db, JORNADAS_COLLECTION);
-      // 🚨 QUERY CORREGIDA: Usamos 'fechaExtraccion'
+      // QUERY CORREGIDA: Usamos 'fechaExtraccion'
       const q = query(jornadasCollectionRef, orderBy('fechaExtraccion', 'desc')); 
       
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const fetchedJornadas: JornadaData[] = [];
         snapshot.forEach(doc => {
-          const data = doc.data() as Omit<JornadaData, 'id'>;
+          // ⚠️ Tipado simplificado. Usamos DocumentData o cualquier para asegurar que el acceso a campos funciona
+          // El tipado complejo (Omit) estaba causando problemas.
+          const data = doc.data() as DocumentData; 
           
           fetchedJornadas.push({
             id: doc.id,
-            // 🚨 CAMBIO DE CAMPO: Usamos 'fechaExtraccion'
-            fechaExtraccion: data.fechaExtraccion, 
-            jornada: data.jornada, 
-            partidos: data.partidos || [],
+            fechaExtraccion: data.fechaExtraccion as string, 
+            
+            // ✅ CORRECCIÓN CLAVE: Usamos 'jornadaId' que es el nombre correcto del campo.
+            jornadaId: data.jornadaId as string, 
+            
+            partidos: data.partidos as Partido[] || [],
+            estadoPlaneacion: data.estadoPlaneacion as JornadaData['estadoPlaneacion'],
+            ultimaPlaneacion: data.ultimaPlaneacion as JornadaData['ultimaPlaneacion'],
           });
         });
         
@@ -216,7 +245,10 @@ function App() {
           } />
           
           {/* Ruta: Detalle de Partido */}
-          <Route path="/partido/:partidoId" element={<PartidoDetail />} /> 
+          <Route 
+            path="/partido/:partidoId" 
+            element={<PartidoDetail jornadas={jornadas} isLoading={isLoading} />} 
+          /> 
 
         </Routes>
       </main>
@@ -227,7 +259,7 @@ function App() {
           <button 
           onClick={openModal}
             aria-label="Agregar Nueva Planeación"
-            className="fixed bottom-10 right-10 
+            className="fixed bottom-20 right-10
                        text-6xl text-emerald-500 hover:text-emerald-600 transition-colors 
                        shadow-lg rounded-full z-50"
           >

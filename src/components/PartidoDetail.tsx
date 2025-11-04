@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 // Importaciones de Firebase - FUNCIONES
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore'; // No necesitamos doc ni onSnapshot aquí
 // Importación de Firebase - TIPOS/INTERFACES
 import type { User } from 'firebase/auth'; 
+
+// ✅ CORRECCIÓN CLAVE: Importamos todos los tipos de App.tsx, incluyendo Planeacion
+import type { JornadaData, Partido, Planeacion } from '../App';
 
 
 // ====================================================================
 // DECLARACIÓN DE VARIABLES GLOBALES (Para el entorno de GitHub Codespaces/Canvas)
-// Esto soluciona los errores: "No se encuentra el nombre '__firebase_config'"
 // ====================================================================
 declare const __firebase_config: string | undefined;
-// 🚨 CORRECCIÓN: Eliminé la 'const' adicional que causaba un error TS
 declare const __initial_auth_token: string | null | undefined;
 
 
@@ -38,45 +39,13 @@ const AlertCircleIcon = (props: any) => ( <SvgIcon path="M12 2C6.477 2 2 6.477 2
 // ====================================================================
 // INTERFACES Y CONSTANTES
 // ====================================================================
-interface Planeacion {
-    id_planeacion: string;
-    arbitro_creador: string;
-    fecha_creacion: string; 
-    partido_referencia: string;
-    objetivos: string[];
-    prediccion?: {
-        resultado: string;
-        tendencias: string;
-    }
-    datos_equipo_local: { 
-        nombre: string; 
-        observaciones: string; 
-        jugadores_clave: string[] 
-    };
-    datos_equipo_visitante: { 
-        nombre: string; 
-        observaciones: string; 
-        jugadores_clave: string[] 
-    };
-    aspectos_clave_reglas: string[];
-    coordinacion_arbitral: {
-        codigo_faltas: string;
-        codigo_cambios: string;
-        minutos_criticos: string;
-    };
-}
+// 🛑 NOTA: Eliminamos la interfaz Planeacion duplicada, ya se importa de App.tsx
 
-interface PartidoData {
-    local: string;
-    visitante: string;
-    categoria: string;
-    dia: string;
-    hora: string;
-    central: string;
-    asistente1: string;
-    asistente2: string;
+// Usamos el tipo Partido (importado de App.tsx) y lo extendemos para el detalle.
+interface PartidoData extends Partido { 
     planeacion?: Planeacion; 
 }
+
 
 const JORNADAS_COLLECTION = 'jornadas';
 
@@ -88,7 +57,6 @@ const API_BASE_URL = 'https://planeador-partidos-backend.vercel.app';
 // FUNCIÓN DE CONFIGURACIÓN DE FIREBASE (REPLICADA DESDE APP.TSX)
 // ====================================================================
 const getFirebaseConfig = () => {
-    // 1. Intentar usar la configuración inyectada por el entorno (si existe)
     if (typeof __firebase_config !== 'undefined' && __firebase_config) {
         try {
             return JSON.parse(__firebase_config);
@@ -96,8 +64,6 @@ const getFirebaseConfig = () => {
             console.error("Error al parsear __firebase_config.");
         }
     }
-
-    // 2. Usar las variables de entorno de VITE (definidas en .env o Vercel)
     if (import.meta.env.VITE_FIREBASE_API_KEY) {
         return {
             apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -108,23 +74,30 @@ const getFirebaseConfig = () => {
             appId: import.meta.env.VITE_FIREBASE_APP_ID,
         };
     }
-    
-    // 3. Objeto vacío si no hay configuración disponible
     return {};
 };
+
+
+// ====================================================================
+// DEFINICIÓN DE PROPS PARA EL COMPONENTE
+// ====================================================================
+interface PartidoDetailProps {
+    jornadas: JornadaData[];
+    isLoading: boolean; // Indica si el componente padre (App) está cargando data de Firestore
+}
 
 
 // ====================================================================
 // COMPONENTE PRINCIPAL
 // ====================================================================
 
-const PartidoDetail: React.FC = () => {
+const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAppLoading }) => {
     
     const { partidoId: idRutaCompleto } = useParams<{ partidoId: string }>(); 
     const navigate = useNavigate();
 
-    // 1. Estados de Firebase/Auth
-    const [dbInstance, setDbInstance] = useState<any>(null);
+    // 1. Estados de Firebase/Auth (Se mantienen para la función `generarPlaneacion`)
+    // No necesitamos dbInstance aquí, solo el userId para el endpoint
     const [userId, setUserId] = useState<string | null>(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     
@@ -134,16 +107,14 @@ const PartidoDetail: React.FC = () => {
     
     // 3. Estado de la Data y UI
     const [partidoData, setPartidoData] = useState<PartidoData | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false); 
     const [error, setError] = useState<string | null>(null);
 
 
     // --- EFECTO 1: Inicialización de Firebase y Auth ---
     useEffect(() => {
-        // 🚨 CONFIGURACIÓN LEÍDA AQUÍ
         const firebaseConfig = getFirebaseConfig();
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
 
         if (!Object.keys(firebaseConfig).length) {
             console.error("Firebase config is missing.");
@@ -154,11 +125,10 @@ const PartidoDetail: React.FC = () => {
 
         try {
             const app = initializeApp(firebaseConfig);
-            const db = getFirestore(app);
+            // const db = getFirestore(app); // No necesitamos la instancia de DB aquí
             const auth = getAuth(app);
-            setDbInstance(db);
-    
-            // Función para manejar la autenticación
+            // setDbInstance(db); // Eliminado
+
             const authenticate = async () => {
                 try {
                     if (initialAuthToken) {
@@ -172,11 +142,11 @@ const PartidoDetail: React.FC = () => {
                 }
             };
     
-            // Tipado explícito para 'user'
             const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
                 if (user) {
                     setUserId(user.uid);
                 } else {
+                    // Usar un ID de sesión anónimo si no hay autenticación, para la referencia
                     setUserId(crypto.randomUUID()); 
                 }
                 setIsAuthReady(true);
@@ -189,7 +159,7 @@ const PartidoDetail: React.FC = () => {
             setError("Error crítico al iniciar Firebase en el detalle del partido.");
             setIsAuthReady(true);
         }
-    }, []); // Dependencias vacías, solo se ejecuta al montar
+    }, []); 
 
     // --- EFECTO 2: Descomponer ID de Ruta ---
     useEffect(() => {
@@ -199,52 +169,47 @@ const PartidoDetail: React.FC = () => {
             if (parts.length === 2 && !isNaN(Number(parts[1]))) {
                 setJornadaId(parts[0]);
                 setPartidoIndex(Number(parts[1]));
+                setError(null); // Limpiar error si el ID es válido
             } else {
-                // Si el formato es incorrecto, marcamos la carga como lista para mostrar el error
                 setError("Error: El formato del ID del partido no es válido (Ej: J01-1).");
-                setIsAuthReady(true); 
             }
         }
     }, [idRutaCompleto]);
 
 
-    // --- EFECTO 3: Carga y Listener de Firestore (onSnapshot) ---
+    // --- EFECTO 3: Búsqueda del Partido usando las Props (Reemplaza el onSnapshot redundante) ---
     useEffect(() => {
-        // Asegurarse de que Firebase esté listo y que los IDs de la ruta sean válidos
-        if (!isAuthReady || !dbInstance || !jornadaId || partidoIndex === null) {
+        // Solo intentamos buscar si la carga principal terminó
+        if (isAppLoading || !jornadas.length) {
+            setPartidoData(null);
             return;
         }
 
-        setIsLoading(true); // Se marca como cargando al iniciar el listener
-        
-        const jornadaDocRef = doc(dbInstance, JORNADAS_COLLECTION, jornadaId);
-        
-        // Tipado explícito para 'err'
-        const unsubscribe = onSnapshot(jornadaDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                const partidos = data.partidos as PartidoData[] || [];
+        if (jornadaId && partidoIndex !== null) {
+            // Buscamos el documento de jornada por su 'id' (que es el doc.id de Firestore)
+            const jornada = jornadas.find(j => j.id === jornadaId);
+            
+            if (jornada) {
+                const partido = jornada.partidos[partidoIndex];
                 
-                if (partidoIndex < partidos.length) {
-                    setPartidoData(partidos[partidoIndex]);
-                    setError(null); 
+                if (partido) {
+                    // Usamos el partido encontrado, le añadimos el campo planeacion (si existe)
+                    setPartidoData(partido as PartidoData);
+                    setError(null);
                 } else {
                     setError(`Error: El partido con índice ${partidoIndex} no existe en la jornada.`);
                     setPartidoData(null);
                 }
             } else {
-                setError(`Error: Documento de Jornada ${jornadaId} no encontrado.`);
+                setError(`Error: Documento de Jornada ${jornadaId} no encontrado en la lista principal.`);
                 setPartidoData(null);
             }
-            setIsLoading(false); // La carga termina, ya sea con datos o error
-        }, (err: Error) => { // Tipado explícito para el error de Firestore
-            console.error("Firestore Listener Error:", err);
-            setError(`Error de conexión con Firestore: ${err.message}`);
-            setIsLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [isAuthReady, dbInstance, jornadaId, partidoIndex]);
+        } else if (jornadaId === null && partidoIndex === null) {
+            // Si los IDs de ruta aún no se han descompuesto, esperamos
+            setPartidoData(null);
+        }
+        
+    }, [isAppLoading, jornadas, jornadaId, partidoIndex]); // Depende de las props y estados de ID
 
 
     // *************************************************************
@@ -256,7 +221,7 @@ const PartidoDetail: React.FC = () => {
             return;
         }
 
-        setIsLoading(true);
+        setIsGenerating(true);
         setError(null); 
         
         try {
@@ -267,6 +232,7 @@ const PartidoDetail: React.FC = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     jornadaId: jornadaId,
+                    // Se envía el índice como string, como lo esperaba tu backend
                     partidoIndex: partidoIndex.toString() 
                 }), 
             });
@@ -278,15 +244,15 @@ const PartidoDetail: React.FC = () => {
                 throw new Error(`Error en el servidor: ${details}`);
             }
 
-            console.log("Planeación generada:", data.planeacion);
-            // El backend solo notifica. La actualización real vendrá de onSnapshot.
+            console.log("Planeación solicitada. Esperando actualización de Firestore...");
+            // La actualización real vendrá de onSnapshot en el componente padre (App.tsx)
             setError(`Éxito: ${data.message}`);
             
         } catch (err) {
             console.error("Fallo de red o servidor:", err);
             setError(`No se pudo generar el plan. Detalles: ${err instanceof Error ? err.message : 'Error desconocido'}`);
         } finally {
-            setIsLoading(false);
+            setIsGenerating(false);
         }
     };
 
@@ -295,14 +261,15 @@ const PartidoDetail: React.FC = () => {
     // RENDERIZADO CONDICIONAL DE CONTENIDO
     // *************************************************************
 
-    // Muestra pantalla de carga si no está listo O si no hay datos AÚN (loading)
-    if (!isAuthReady || (!partidoData && isLoading)) { 
+    // Muestra pantalla de carga si la data principal de Firestore no ha llegado
+    if (isAppLoading) { 
         return <div className="p-8 text-center bg-gray-100 min-h-screen flex items-center justify-center">
             <PulseIcon className="text-emerald-500 w-10 h-10 animate-spin mr-3" />
-            <span className="text-gray-600 font-medium">Conectando y cargando datos del partido...</span>
+            <span className="text-gray-600 font-medium">Cargando data principal de jornadas...</span>
         </div>;
     }
 
+    // Muestra pantalla de error si no se encuentra el partido después de la carga
     if (!partidoData) {
          return <div className="p-8 text-center bg-red-50 min-h-screen flex flex-col items-center justify-center">
              <AlertCircleIcon className="text-red-500 w-12 h-12 mb-4" />
@@ -322,7 +289,7 @@ const PartidoDetail: React.FC = () => {
 
 
     const renderContent = () => {
-        if (isLoading) {
+        if (isGenerating) {
             // ... (Contenido de carga cuando se genera el plan)
             return (
                 <div className="flex flex-col items-center justify-center p-10 bg-white rounded-lg shadow-lg">
@@ -385,7 +352,7 @@ const PartidoDetail: React.FC = () => {
 
                 {/* Objetivos */}
                 <div className="mb-4">
-                    <h4 className="font-bold text-gray-700 mb-2 flex items-center"><ListIcon className="mr-2 w-5 h-5 text-emerald-500" /> Objetivos de la Cuarteta:</h4>
+                    <h4 className="font-bold text-gray-700 mb-2 flex items-center"><ListIcon className="mr-2 w-5 h-5 text-emerald-500" /> Objetivos de la Tripleta:</h4>
                     <ul className="list-inside text-gray-600 text-sm space-y-1">
                         {currentPlan.objetivos.map((obj, i) => (
                             <li key={i} className="flex items-start before:content-['•'] before:mr-2 before:text-emerald-500">
@@ -419,7 +386,7 @@ const PartidoDetail: React.FC = () => {
 
                 {/* Coordinación Arbitral */}
                 <div className="mt-6 border-t pt-4">
-                    <h4 className="font-bold text-gray-700 mb-2 flex items-center"><CodeIcon className="mr-2 w-5 h-5 text-purple-600" /> Coordinación y Códigos (Cuarteta):</h4>
+                    <h4 className="font-bold text-gray-700 mb-2 flex items-center"><CodeIcon className="mr-2 w-5 h-5 text-purple-600" /> Coordinación y Códigos (Tripleta):</h4>
                     <div className="text-sm text-gray-600 space-y-2">
                         <p><span className="font-semibold">Código Faltas:</span> {currentPlan.coordinacion_arbitral.codigo_faltas}</p>
                         <p><span className="font-semibold">Código Cambios:</span> {currentPlan.coordinacion_arbitral.codigo_cambios}</p>
@@ -447,8 +414,10 @@ const PartidoDetail: React.FC = () => {
                     <h2 className="text-xl font-bold text-gray-800">
                         {partidoData.local} vs {partidoData.visitante}
                     </h2>
-                    <p className="text-sm text-gray-500">Cat: <span className="font-medium">{partidoData.categoria}</span> | {partidoData.dia} {partidoData.hora}</p>
-                    <p className="text-xs text-gray-400">Central: {partidoData.central}</p>
+                    {/* ✅ CORRECCIÓN: Usamos 'fecha' y no 'dia' */}
+                    <p className="text-sm text-gray-500">Cat: <span className="font-medium">{partidoData.categoria}</span> | {partidoData.fecha} {partidoData.hora}</p>
+                    {/* ✅ CORRECCIÓN: Usamos 'arbitro_central' y no 'central' */}
+                    <p className="text-xs text-gray-400">Central: {partidoData.arbitro_central}</p>
                 </div>
             </div>
             
@@ -474,14 +443,14 @@ const PartidoDetail: React.FC = () => {
             {/* --- Botón de Acción Principal --- */}
             <button
                 onClick={generarPlaneacion}
-                disabled={isLoading}
+                disabled={isGenerating}
                 className={`w-full py-3 text-white font-bold rounded-lg shadow-md transition transform active:scale-95 ${
-                    isLoading 
+                    isGenerating 
                         ? 'bg-gray-400 cursor-not-allowed' 
                         : 'bg-emerald-500 hover:bg-emerald-600'
                 }`}
             >
-                {isLoading ? 'GENERANDO...' : (currentPlan ? 'RE-GENERAR PLAN CON IA' : 'GENERAR PLAN POR PRIMERA VEZ')}
+                {isGenerating ? 'GENERANDO...' : (currentPlan ? 'RE-GENERAR PLAN CON IA' : 'GENERAR PLAN POR PRIMERA VEZ')}
             </button>
             
             <p className="text-xs text-gray-400 text-center mt-4">

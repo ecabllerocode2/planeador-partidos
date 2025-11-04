@@ -110,7 +110,7 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
     // 1. Estados de Auth
     // ❌ ELIMINAMOS dbInstance
     const [userId, setUserId] = useState<string | null>(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
+    const [_isAuthReady, setIsAuthReady] = useState(false);
     
     // 2. Descomponer el ID de la ruta (SIN CAMBIOS)
     const [jornadaId, setJornadaId] = useState<string | null>(null);

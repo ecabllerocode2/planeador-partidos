@@ -51,6 +51,13 @@ export interface Planeacion {
   prediccion: { [key: string]: any };
 }
 
+export interface Sancion {
+  categoria: string; 
+  nombre: string;
+  equipo: string;
+  rol: string;
+}
+
 export interface Partido {
   local: string;
   visitante: string;
@@ -71,6 +78,7 @@ export interface JornadaData {
   jornadaId: string;
   estadoPlaneacion?: 'PENDIENTE' | 'PARCIAL' | 'COMPLETA';
   ultimaPlaneacion?: Date | string;
+  sanciones?: Sancion[];
 }
 
 export interface StatsCache {
@@ -179,6 +187,7 @@ function App() {
                 partidos: data.partidos as Partido[] || [],
                 estadoPlaneacion: data.estadoPlaneacion as JornadaData['estadoPlaneacion'],
                 ultimaPlaneacion: data.ultimaPlaneacion as JornadaData['ultimaPlaneacion'],
+                sanciones: data.sanciones as Sancion[] || [],
               });
             });
 

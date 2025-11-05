@@ -4,8 +4,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 // Las importaciones de Firebase quedan MÍNIMAS (Solo para Auth, si lo necesitas para el backend)
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-// ❌ YA NO NECESITAMOS getFirestore, doc, getDoc 
-// import { getFirestore, doc, getDoc } from 'firebase/firestore'; 
 import type { User } from 'firebase/auth'; 
 
 // Importamos los tipos necesarios desde App.tsx
@@ -50,6 +48,20 @@ interface EquipoPosicionData {
     visitante: string | number | null;
 }
 
+// INTERFAZ para las sanciones
+interface Sancion {
+    categoria: string; // Ej: "2012"
+    nombre: string;
+    equipo: string; // <-- Nombre original del equipo en la sanción
+    rol: string;
+}
+
+// Extensión temporal para acceder a 'sanciones' en JornadaData
+interface FullJornadaData extends JornadaData {
+    sanciones?: Sancion[];
+}
+
+
 const API_BASE_URL = 'https://planeador-partidos-backend.vercel.app'; 
 
 
@@ -64,38 +76,39 @@ const getFirebaseConfig = () => {
             console.error("Error al parsear __firebase_config.");
         }
     }
-    if (import.meta.env.VITE_FIREBASE_API_KEY) {
-        return {
-            apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-            authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-            projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-            storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-            messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-            appId: import.meta.env.VITE_FIREBASE_APP_ID,
-        };
-    }
     return {};
 };
 
 
 // ====================================================================
-// DEFINICIÓN DE PROPS PARA EL COMPONENTE (SE AÑADE statsCache)
+// DEFINICIÓN DE PROPS PARA EL COMPONENTE
 // ====================================================================
 interface PartidoDetailProps {
     jornadas: JornadaData[];
     isLoading: boolean;
-    // ✅ NUEVA PROP: La caché de estadísticas traída de App.tsx
+    // ✅ Prop: La caché de estadísticas traída de App.tsx
     statsCache: StatsCache; 
 }
 
 // ====================================================================
-// FUNCIÓN: Normaliza texto para comparación robusta. (SIN CAMBIOS)
+// FUNCIÓN: Normaliza texto para comparación robusta. (MEJORA: mexiquense/mexiquence)
 // ====================================================================
 const normalizeText = (text: string) => 
     text.toLowerCase()
         .normalize("NFD") 
-        .replace(/[\u0300-\u036f]/g, "") 
-        .replace(/[^a-z0-9]/g, ''); 
+        .replace(/[\u0300-\u036f]/g, "") // 1. Elimina acentos (ñ -> n)
+        .replace(/[^a-z0-9]/g, '')      // 2. Elimina cualquier caracter no alfanumérico
+        // 3. CORRECCIÓN CLAVE: Reemplaza la terminación 'quense' por 'quence' para unificar 'mexiquense' y 'mexiquence'
+        .replace('quense', 'quence');
+
+// ====================================================================
+// FUNCIÓN CLAVE: Extrae solo los dígitos del año del string de categoría.
+// ====================================================================
+const extractYearFromCategory = (category: string): string => {
+    // Busca los dígitos iniciales (Ej: "2009 G-1" -> "2009")
+    const match = String(category).trim().match(/^(\d{4})/);
+    return match ? match[1] : ''; 
+};
 
 
 // ====================================================================
@@ -108,7 +121,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
     const navigate = useNavigate();
 
     // 1. Estados de Auth
-    // ❌ ELIMINAMOS dbInstance
     const [userId, setUserId] = useState<string | null>(null);
     const [_isAuthReady, setIsAuthReady] = useState(false);
     
@@ -121,10 +133,13 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
     const [isGenerating, setIsGenerating] = useState(false); 
     const [error, setError] = useState<string | null>(null);
 
-
-    // AGREGADO: Estado de las Posiciones de la tabla de clasificación (SIN CAMBIOS)
+    // Estado de las Posiciones de la tabla de clasificación (SIN CAMBIOS)
     const [posicionesData, setPosicionesData] = useState<EquipoPosicionData | null>(null);
 
+    // ESTADO: Lista de jugadores sancionados para este partido
+    const [sancionados, setSancionados] = useState<Sancion[]>([]);
+    
+    // REMOVIDO: Se elimina el estado de diagnóstico de la UI
 
     // --- EFECTO 1: Inicialización de Auth (MANTENEMOS SOLO AUTH) ---
     useEffect(() => {
@@ -140,7 +155,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
 
         try {
             const app = initializeApp(firebaseConfig);
-            // ❌ YA NO INICIALIZAMOS FIRESTORE AQUÍ
             const auth = getAuth(app);
             
             const authenticate = async () => {
@@ -220,10 +234,9 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
 
 
     // ====================================================================
-    // ✅ --- EFECTO 4: Carga de POSICIONES de statsCache (USANDO LA PROP) ---
+    // --- EFECTO 4: Carga de POSICIONES de statsCache (SIN CAMBIOS) ---
     // ====================================================================
     useEffect(() => {
-        // Ejecutar solo si el partidoData está listo Y si ya tenemos datos en la caché.
         if (!partidoData || Object.keys(statsCache).length === 0) {
             setPosicionesData(null);
             return;
@@ -234,7 +247,6 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
             
             const { categoria, local, visitante } = partidoData;
             
-            // 1. Verificar si la categoría existe en la caché
             const statsEntry = statsCache[categoria];
             
             if (!statsEntry) {
@@ -252,26 +264,67 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
             const normalizedLocal = normalizeText(local);
             const normalizedVisitante = normalizeText(visitante);
            
-            
-            // 2. Buscar la posición de cada equipo comparando el texto normalizado
             const statsLocal = standings.find(s => normalizeText(s.equipo) === normalizedLocal);
             const statsVisitante = standings.find(s => normalizeText(s.equipo) === normalizedVisitante);
 
             const posLocal = statsLocal?.posicion || null;
             const posVisitante = statsVisitante?.posicion || null;
             
-            
-
             setPosicionesData({
                 local: posLocal,
                 visitante: posVisitante
             });
-
         };
 
         findStandings();
         
     }, [partidoData, statsCache]); // DEPENDEMOS DE PARTIDO DATA Y STATS CACHE (la prop)
+
+
+    // ====================================================================
+    // --- EFECTO 5: Filtrado y Carga de Sancionados (ULTRA-ROBUSTO) ---
+    // ====================================================================
+    useEffect(() => {
+        if (!partidoData || !jornadaId || isAppLoading || !jornadas.length) {
+            setSancionados([]);
+            return;
+        }
+
+        const { categoria: categoriaPartidoCompleta, local, visitante } = partidoData;
+
+        // 1. Extracción y Normalización de Categoría
+        const partidoAno = extractYearFromCategory(categoriaPartidoCompleta);
+        
+        const jornadaCompleta = jornadas.find(j => j.id === jornadaId) as (FullJornadaData | undefined);
+        const sanciones: Sancion[] = jornadaCompleta?.sanciones || [];
+
+        // 2. Normalización de Equipos
+        const normalizedLocal = normalizeText(local);
+        const normalizedVisitante = normalizeText(visitante);
+        
+        const sancionadosEnPartido = sanciones.filter(sancion => {
+            
+            // Match 1: Categoría (solo el año)
+            const sancionAno = extractYearFromCategory(sancion.categoria);
+            const isMismoAno = sancionAno === partidoAno;
+
+            if (!isMismoAno) {
+                return false;
+            }
+
+            // Match 2: Equipo (local o visitante)
+            const normalizedEquipoSancionado = normalizeText(sancion.equipo);
+            const isLocal = normalizedEquipoSancionado === normalizedLocal;
+            const isVisitante = normalizedEquipoSancionado === normalizedVisitante;
+
+            return isLocal || isVisitante;
+        });
+        
+        // REMOVIDO: Se elimina todo el bloque de setDiagnostico
+
+        setSancionados(sancionadosEnPartido);
+
+    }, [partidoData, jornadas, jornadaId, isAppLoading]); // Depende de la data del partido y la lista de jornadas
 
 
     // *************************************************************
@@ -317,10 +370,8 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
 
 
     // *************************************************************
-    // RENDERIZADO (SIN CAMBIOS EN LA LÓGICA DE MOSTRAR POSICIONES/DIAGNÓSTICO)
+    // RENDERIZADO (Se remueve el diagnóstico)
     // *************************************************************
-
-    // ... (El resto del renderizado es idéntico a la versión anterior)
 
     if (isAppLoading) { 
         return <div className="p-8 text-center bg-gray-100 min-h-screen flex items-center justify-center">
@@ -351,7 +402,8 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
 
 
     const renderContent = () => {
-        if (isGenerating) {
+        
+         if (isGenerating) {
             return (
                 <div className="flex flex-col items-center justify-center p-10 bg-white rounded-lg shadow-lg">
                     <PulseIcon className="text-blue-500 w-12 h-12 animate-pulse" />
@@ -484,11 +536,34 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                     <p className="text-xs text-gray-400">Central: {partidoData.arbitro_central}</p>
                 </div>
             </div>
+
+            {/* --- Sección de Sancionados (NUEVA FUNCIONALIDAD) --- */}
+            {sancionados.length > 0 && (
+                <div className="p-4 bg-red-100 border border-red-400 rounded-lg shadow-md animate-pulse">
+                    <div className="flex items-center mb-2">
+                        <AlertCircleIcon className="w-6 h-6 text-red-600 mr-2 flex-shrink-0" />
+                        <h3 className="text-lg font-bold text-red-800 uppercase">
+                            ¡ATENCIÓN! JUGADORES SANCIONADOS ({sancionados.length})
+                        </h3>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-red-700 ml-4">
+                        {sancionados.map((s, index) => (
+                            <li key={index}>
+                                <span className="font-semibold">{s.nombre}</span> ({s.rol}) del equipo <span className="font-bold">{s.equipo}</span> - Cat. {s.categoria}
+                            </li>
+                        ))}
+                    </ul>
+                    <p className="mt-3 text-xs text-red-600 italic">
+                        Verifique la presencia de estos jugadores.
+                    </p>
+                </div>
+            )}
             
+            {/* REMOVIDO: Se elimina la sección de diagnóstico de la UI */}
             
             {/* --- Mostrar mensaje de error/no disponible para posiciones original (si los valores son N/D o Error) --- */}
             {(posicionesData?.local === 'Error' || posicionesData?.local === 'N/D') && (
-                 <div className="text-center text-sm text-gray-500 p-2 bg-red-100 rounded-lg">Posiciones no disponibles para esta categoría o error de carga. (Verifique el diagnóstico superior).</div>
+                 <div className="text-center text-sm text-gray-500 p-2 bg-red-100 rounded-lg">Posiciones no disponibles para esta categoría o error de carga.</div>
             )}
             
             {/* Meta-datos y Estado de la Planeación */}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react'; // 👈 Se agrega useMemo
 import { Routes, Route, useLocation } from 'react-router-dom';
 
 // Importaciones de Componentes
@@ -26,9 +26,16 @@ import LoginView from './components/LoginView';
 declare const __firebase_config: string | undefined;
 declare const __initial_auth_token: string | null | undefined;
 
+// *******************************************************************
+// 🔑 PASO 1: DEFINE TU UID DE ADMINISTRADOR AQUÍ
+// REEMPLAZA "TU_UID_ADMINISTRADOR_AQUI" con tu UID real de Firebase.
+// *******************************************************************
+const ADMIN_UID = "1C6xrXnZiJgfb1CUCrHSvbyd1om1"; 
+// *******************************************************************
+
 
 // ====================================================================
-// INTERFACES (EXPORTADAS PARA USO EN OTROS COMPONENTES)
+// INTERFACES (SE MANTIENEN IGUAL)
 // ====================================================================
 
 export interface Planeacion {
@@ -114,7 +121,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ ESTADOS DE AUTENTICACIÓN
+  // ESTADOS DE AUTENTICACIÓN
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -124,8 +131,12 @@ function App() {
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
+  // Lógica de navegación
   const isHome = location.pathname === '/';
   const showFabAndFooter = isHome || location.pathname === '/stats';
+
+  // 🔑 PASO 2: LÓGICA DE SUPERUSUARIO
+  const isSuperUser = useMemo(() => user?.uid === ADMIN_UID, [user]);
 
   // --- EFECTO: Inicialización de Firebase, Auth Listener y Carga de Datos ---
   useEffect(() => {
@@ -146,12 +157,12 @@ function App() {
       db = getFirestore(app);
       const auth = getAuth(app);
 
-      // 1. 🔑 Listener de Autenticación
+      // 1. Listener de Autenticación
       const unsubscribeAuth = onAuthStateChanged(auth, (authUser) => {
         setUser(authUser);
         setIsAuthReady(true);
 
-        // 2. 📡 Carga de JORNADAS y STATS (solo si hay un usuario logueado)
+        // 2. Carga de JORNADAS y STATS (solo si hay un usuario logueado)
         if (authUser) {
           // Listener para JORNADAS
           const jornadasCollectionRef = collection(db, JORNADAS_COLLECTION);
@@ -204,7 +215,7 @@ function App() {
         }
       });
       
-      // 3. 🧹 Limpieza
+      // 3. Limpieza
       return () => {
         if (unsubscribeJornadas) {
             unsubscribeJornadas();
@@ -256,7 +267,7 @@ function App() {
       ? "CLASIFICACIONES"
       : "DETALLE DEL PARTIDO";
 
-  // ✅ Función local para limpiar el estado de React después de cerrar sesión
+  // Función local para limpiar el estado de React después de cerrar sesión
   const handleLogoutLocal = () => {
     setUser(null); 
     setAuthError(null);
@@ -265,7 +276,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* 🔑 Header con props de autenticación */}
+      {/* Header con props de autenticación */}
       <Header 
         titulo={headerTitle} 
         onLogout={handleLogoutLocal} 
@@ -298,7 +309,10 @@ function App() {
                 <div className="p-8 text-center bg-white rounded-lg shadow-sm text-gray-500">
                   <IoFootball className="w-12 h-12 mx-auto text-gray-300 mb-2" />
                   <p className='font-semibold'>No hay jornadas cargadas.</p>
-                  <p className='text-sm'>Presiona el botón (+) para subir un archivo de partidos.</p>
+                  {/* PASO 3: Renderizado condicional del mensaje para superusuario */}
+                  {isSuperUser && (
+                     <p className='text-sm'>Presiona el botón (+) para subir un archivo de partidos.</p>
+                  )}
                 </div>
               )}
 
@@ -331,8 +345,8 @@ function App() {
         </Routes>
       </main>
 
-      {/* FAB y Footer solo se muestran si el usuario está logueado */}
-      {isHome && (
+      {/* 🔑 PASO 3: FAB solo se muestra si el usuario está en HOME y es SUPERUSER */}
+      {isHome && isSuperUser && (
         <button
           onClick={openModal}
           aria-label="Agregar Nueva Planeación"
@@ -348,10 +362,13 @@ function App() {
         <Footer currentPath={location.pathname} />
       )}
 
-      <ModalSubidaArchivos
-        isOpen={isModalOpen}
-        onClose={closeModal}
-      />
+      {/* 🔑 PASO 3: Modal solo se renderiza si es SUPERUSER y está abierto */}
+      {isSuperUser && (
+        <ModalSubidaArchivos
+          isOpen={isModalOpen}
+          onClose={closeModal}
+        />
+      )}
     </div>
   );
 }

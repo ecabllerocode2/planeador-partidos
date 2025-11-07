@@ -159,7 +159,7 @@ const EditMatchModal: React.FC<EditMatchModalProps> = ({
                         className="py-2 px-4 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
                         disabled={isSaving}
                     >
-                        Cancelar
+                        Cancela
                     </button>
                     <button
                         onClick={handleSave} 

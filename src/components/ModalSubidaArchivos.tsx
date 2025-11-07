@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { IoClose, IoImage, IoCloudUpload, IoCheckmarkCircle, IoWarning, IoDocumentText } from 'react-icons/io5';
+import { IoClose, IoDocumentText, IoCloudUpload, IoCheckmarkCircle, IoWarning, IoCode } from 'react-icons/io5';
 
+// Definición de las interfaces para mejor tipado (ajustado para el nuevo flujo)
 interface ModalSubidaProps {
   isOpen: boolean;
   onClose: () => void;
@@ -16,44 +17,16 @@ interface BackendResponse {
 }
 
 const ModalSubidaArchivos: React.FC<ModalSubidaProps> = ({ isOpen, onClose }) => {
-  // Estado para la imagen obligatoria
-  const [imagenAsignacion, setImagenAsignacion] = useState<File | null>(null);
-  
-  // ✅ Estado para MULTIPLES ARCHIVOS de sanciones
-  const [imagenesSanciones, setImagenesSanciones] = useState<File[]>([]); 
-  
+  // Estado para el JSON ingresado en el textarea
+  const [jsonDataInput, setJsonDataInput] = useState('');
+  // Estado para el ID de la jornada
   const [jornadaIdInput, setJornadaIdInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   if (!isOpen) return null;
 
-  // =================================================================
-  // ✅ Manejadores de Archivos ESPECÍFICOS para evitar errores TS2345
-  // =================================================================
-  
-  // 1. Manejador para UN solo archivo (Imagen de Asignación)
-  const handleSingleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setImagenAsignacion(e.target.files[0]);
-    } else {
-      setImagenAsignacion(null);
-    }
-    setUploadStatus('idle');
-  };
-
-  // 2. Manejador para MÚLTIPLES archivos (Imágenes de Sanciones)
-  const handleMultipleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setImagenesSanciones(Array.from(e.target.files));
-    } else {
-      setImagenesSanciones([]);
-    }
-    setUploadStatus('idle');
-  };
-
-
-  // Manejador de Jornada (sin cambios)
+  // Manejador para el ID de Jornada
   const handleJornadaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.trim();
     const match = value.match(/(\d+)/);
@@ -68,27 +41,47 @@ const ModalSubidaArchivos: React.FC<ModalSubidaProps> = ({ isOpen, onClose }) =>
     setUploadStatus('idle');
   };
 
+  // Manejador para el cambio en el TextArea
+  const handleJsonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setJsonDataInput(e.target.value);
+    setUploadStatus('idle');
+  };
 
   const handleUpload = async () => {
-    if (!imagenAsignacion || !jornadaIdInput) {
-      alert("Por favor, sube la imagen de asignación e ingresa la Jornada.");
+    // 1. Validaciones
+    if (!jornadaIdInput) {
+      alert("Por favor, ingresa el Identificador de Jornada.");
       return;
     }
+    if (!jsonDataInput) {
+      alert("Por favor, ingresa el JSON de datos.");
+      return;
+    }
+
+    let parsedData;
+    try {
+      parsedData = JSON.parse(jsonDataInput);
+    } catch (error) {
+      alert("❌ Error: El JSON ingresado no es válido. Revisa la sintaxis.");
+      return;
+    }
+
+    // Validación de estructura mínima
+    if (!parsedData.partidos || !Array.isArray(parsedData.partidos) ||
+        !parsedData.sanciones || !Array.isArray(parsedData.sanciones)) {
+        alert("❌ Error: El JSON debe contener arrays 'partidos' y 'sanciones' en el nivel raíz.");
+        return;
+    }
+
 
     setIsUploading(true);
     setUploadStatus('idle');
 
-    const formData = new FormData();
-    formData.append('scheduleImage', imagenAsignacion);
-    formData.append('jornadaId', jornadaIdInput);
-
-    // ✅ Iteramos sobre el array de imágenes y adjuntamos cada una
-    if (imagenesSanciones.length > 0) {
-        imagenesSanciones.forEach((file) => {
-            // Usamos la misma clave 'sanctionsPdf' para todos los archivos.
-            formData.append('sanctionsPdf', file, file.name); 
-        });
-    }
+    // Estructura de la data que enviamos al backend
+    const payload = {
+      jornadaId: jornadaIdInput,
+      data: parsedData
+    };
 
     // Asegúrate de que esta URL sea la correcta para tu endpoint de Vercel.
     const ENDPOINT_URL = 'https://planeador-partidos-backend.vercel.app/api/extract-schedule';
@@ -96,7 +89,10 @@ const ModalSubidaArchivos: React.FC<ModalSubidaProps> = ({ isOpen, onClose }) =>
     try {
       const response = await fetch(ENDPOINT_URL, {
         method: 'POST',
-        body: formData, 
+        headers: {
+          'Content-Type': 'application/json', // ¡Cambiamos a JSON!
+        },
+        body: JSON.stringify(payload),
       });
 
       let data: BackendResponse = {};
@@ -104,7 +100,7 @@ const ModalSubidaArchivos: React.FC<ModalSubidaProps> = ({ isOpen, onClose }) =>
       try {
         data = await response.json();
       } catch (e) {
-        console.warn("⚠️ Fallo en response.json(). Probable contaminación del backend.");
+        console.warn("⚠️ Fallo en response.json(). Respuesta no JSON del backend.");
       }
 
       if (!response.ok) {
@@ -121,12 +117,11 @@ const ModalSubidaArchivos: React.FC<ModalSubidaProps> = ({ isOpen, onClose }) =>
       const totalP = data.totalPartidos || 0;
       const totalS = data.totalSanciones || 0;
 
-      const successMsg = `🎉 ¡Jornada procesada con éxito! Documento guardado con ID: ${docId}.\nPartidos extraídos: ${totalP}\nSanciones extraídas: ${totalS}`;
+      const successMsg = `🎉 ¡Jornada procesada con éxito! Documento guardado con ID: ${docId}.\nPartidos guardados: ${totalP}\nSanciones guardadas: ${totalS}`;
 
       // Resetear inputs tras éxito
-      setImagenAsignacion(null);
-      setImagenesSanciones([]); // ✅ Resetear el array de imágenes de sanciones
-      
+      setJsonDataInput('');
+      // setJornadaIdInput(''); // Opcional, dependiendo de si se carga una jornada tras otra.
       alert(successMsg);
 
     } catch (error) {
@@ -138,27 +133,27 @@ const ModalSubidaArchivos: React.FC<ModalSubidaProps> = ({ isOpen, onClose }) =>
     }
   };
 
-
-  const buttonDisabled = !imagenAsignacion || !jornadaIdInput || isUploading;
+  // El botón ahora se habilita si hay ID de jornada y algo en el JSON textarea
+  const buttonDisabled = !jornadaIdInput || !jsonDataInput || isUploading;
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg transform transition-all">
 
-        <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center">
-            <IoCloudUpload className="mr-2 text-blue-500" />
-            Cargar Asignación de Jornada
+        <div className="p-5 border-b flex justify-between items-center bg-blue-600 rounded-t-xl">
+          <h2 className="text-xl font-extrabold text-white flex items-center">
+            <IoCode className="mr-2 text-white" />
+            Cargar Datos de Jornada (JSON)
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-blue-200 hover:text-white transition">
             <IoClose className="text-2xl" />
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="p-6 space-y-6">
 
-          {/* Campo de Jornada (sin cambios) */}
-          <div className="space-y-2 border-l-4 border-blue-500 p-2 bg-blue-50 rounded">
+          {/* 1. Campo de Jornada */}
+          <div className="space-y-2 border-l-4 border-blue-500 p-3 bg-blue-50 rounded-lg">
             <label className="block text-sm font-bold text-gray-800 flex items-center">
               <IoWarning className="mr-1 text-blue-500" />
               1. Identificador de Jornada (Ej: "Jornada 7")
@@ -174,73 +169,53 @@ const ModalSubidaArchivos: React.FC<ModalSubidaProps> = ({ isOpen, onClose }) =>
             {jornadaIdInput && <p className="text-xs text-gray-600 mt-1">ID a usar: **{jornadaIdInput}**</p>}
           </div>
 
-          {/* Campo de Imagen de Asignación (usa handleSingleFileChange) */}
-          <div className="space-y-2 border-l-4 border-emerald-500 p-2 bg-emerald-50 rounded">
-            <label className="block text-sm font-bold text-gray-800 flex items-center">
-              <IoImage className="mr-1 text-emerald-500" />
-              2. Imagen de Asignación (Horario) - Requerido
+          {/* 2. Campo de JSON de Datos */}
+          <div className="space-y-2 border-l-4 border-emerald-500 p-3 bg-emerald-50 rounded-lg">
+            <label className="block text-sm font-bold text-gray-800 flex items-center mb-2">
+              <IoDocumentText className="mr-1 text-emerald-500" />
+              2. Datos Combinados de Partidos y Sanciones (JSON) - Requerido
             </label>
-            <input
-              type="file"
-              accept="image/*"
-              // ✅ Usar el manejador de archivo único
-              onChange={handleSingleFileChange}
-              className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-200 file:text-emerald-800 hover:file:bg-emerald-300"
+            <textarea
+              placeholder={`Ingresa el JSON con las claves "partidos" y "sanciones". Ejemplo:\n\n{\n  "partidos": [\n    {\n      "fecha": "2025-01-20",\n      "hora": "19:00",\n      "local": "Equipo A",\n      "visitante": "Equipo B"\n    }\n  ],\n  "sanciones": [\n    {\n      "nombre": "Juan Pérez",\n      "equipo": "Equipo A"\n    }\n  ]\n}`}
+              value={jsonDataInput}
+              onChange={handleJsonChange}
+              rows={10}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs resize-none focus:ring-emerald-500 focus:border-emerald-500"
               required
             />
-            {imagenAsignacion && <p className="text-xs text-gray-600 mt-1">Archivo cargado: **{imagenAsignacion.name}**</p>}
-          </div>
-
-          {/* ✅ Campo de Captura de Sanciones (MÚLTIPLE, usa handleMultipleFilesChange) */}
-          <div className="space-y-2 border-l-4 border-amber-500 p-2 bg-amber-50 rounded">
-            <label className="block text-sm font-bold text-gray-800 flex items-center">
-              <IoDocumentText className="mr-1 text-amber-500" />
-              3. Captura(s) de Sanciones (JPG/PNG) - Opcional
-            </label>
-            <input
-              type="file"
-              // ✅ SOLO ACEPTA FORMATOS DE IMAGEN
-              accept="image/jpeg, image/png, image/webp"
-              // ✅ Habilitar múltiples archivos
-              multiple 
-              // ✅ Usar el manejador de archivos múltiples
-              onChange={handleMultipleFilesChange}
-              className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-200 file:text-amber-800 hover:file:bg-amber-300"
-            />
-            {/* ✅ Mostrar el número de archivos cargados */}
-            {imagenesSanciones.length > 0 && <p className="text-xs text-gray-600 mt-1">Archivos cargados: **{imagenesSanciones.length} imágenes**</p>}
+            <p className="text-xs text-gray-600 mt-1">Asegúrate de que la sintaxis JSON sea perfecta.</p>
           </div>
 
 
           {uploadStatus === 'success' && (
-            <div className="p-2 bg-emerald-100 text-emerald-700 rounded flex items-center font-semibold">
-              <IoCheckmarkCircle className="mr-2 text-xl" /> ¡Archivos subidos y datos guardados!
+            <div className="p-3 bg-emerald-100 text-emerald-700 rounded-lg flex items-center font-semibold border border-emerald-300">
+              <IoCheckmarkCircle className="mr-2 text-xl" /> ¡Datos guardados en Firestore!
             </div>
           )}
           {uploadStatus === 'error' && (
-            <div className="p-2 bg-red-100 text-red-700 rounded flex items-center font-semibold">
-              <IoClose className="mr-2 text-xl" /> Error al procesar los archivos.
+            <div className="p-3 bg-red-100 text-red-700 rounded-lg flex items-center font-semibold border border-red-300">
+              <IoClose className="mr-2 text-xl" /> Error al procesar los datos.
             </div>
           )}
 
         </div>
 
-        <div className="p-4 border-t">
+        <div className="p-5 border-t">
           <button
             onClick={handleUpload}
             disabled={buttonDisabled}
-            className={`w-full py-3 font-bold rounded-lg shadow-md transition ${buttonDisabled
-                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
+            className={`w-full py-3 font-extrabold rounded-lg shadow-lg transition transform hover:scale-[1.01] ${buttonDisabled
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
               }`}
           >
             {isUploading ? (
               <span className="flex items-center justify-center">
                 <IoCloudUpload className="animate-pulse mr-2" />
-                Subiendo y Procesando...
+                Validando y Guardando...
               </span>
             ) : (
-              "PROCESAR DOCUMENTOS"
+              "GUARDAR DATOS EN FIRESTORE"
             )}
           </button>
         </div>

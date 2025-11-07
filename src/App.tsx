@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'; // 👈 Se agrega useMemo
+import { useState, useEffect, useMemo } from 'react'; 
 import { Routes, Route, useLocation } from 'react-router-dom';
 
 // Importaciones de Componentes
@@ -12,7 +12,7 @@ import StatsView from './components/StatsView';
 // Importaciones de Firebase
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, type User } from 'firebase/auth'; 
-import { getFirestore, collection, onSnapshot, query, orderBy, type DocumentData, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, query, orderBy, type DocumentData, getDocs, type Firestore } from 'firebase/firestore'; // 👈 Importamos Firestore type
 
 // Importaciones de React Icons
 import { IoMdAddCircle } from "react-icons/io";
@@ -35,7 +35,7 @@ const ADMIN_UID = "1C6xrXnZiJgfb1CUCrHSvbyd1om1";
 
 
 // ====================================================================
-// INTERFACES (SE MANTIENEN IGUAL)
+// INTERFACES
 // ====================================================================
 
 export interface Planeacion {
@@ -128,6 +128,8 @@ function App() {
   const [statsCache, setStatsCache] = useState<StatsCache>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 🔑 CAMBIO 1: El estado de Firestore se mueve a App.tsx
+  const [db, setDb] = useState<Firestore | null>(null); 
 
   // ESTADOS DE AUTENTICACIÓN
   const [user, setUser] = useState<User | null>(null);
@@ -158,11 +160,14 @@ function App() {
       return;
     }
 
-    let db: any;
+    let firestoreInstance: Firestore; // Renombramos para evitar conflicto con el estado local
 
     try {
       const app = initializeApp(firebaseConfig);
-      db = getFirestore(app);
+      // 🔑 CAMBIO 2: Inicializamos Firestore aquí y lo guardamos en el estado
+      firestoreInstance = getFirestore(app); 
+      setDb(firestoreInstance); 
+      
       const auth = getAuth(app);
 
       // 1. Listener de Autenticación
@@ -173,7 +178,7 @@ function App() {
         // 2. Carga de JORNADAS y STATS (solo si hay un usuario logueado)
         if (authUser) {
           // Listener para JORNADAS
-          const jornadasCollectionRef = collection(db, JORNADAS_COLLECTION);
+          const jornadasCollectionRef = collection(firestoreInstance, JORNADAS_COLLECTION); // Usamos firestoreInstance
           const q = query(jornadasCollectionRef, orderBy('fechaExtraccion', 'desc'));
 
           unsubscribeJornadas = onSnapshot(q, (snapshot) => {
@@ -203,7 +208,7 @@ function App() {
           // Carga Única de la Colección STATS_CACHE
           const loadStatsCache = async () => {
               try {
-                  const statsCollectionRef = collection(db, STATS_COLLECTION);
+                  const statsCollectionRef = collection(firestoreInstance, STATS_COLLECTION); // Usamos firestoreInstance
                   const statsSnapshot = await getDocs(statsCollectionRef);
                   const cache: StatsCache = {};
                   statsSnapshot.forEach(doc => {
@@ -221,6 +226,7 @@ function App() {
             setJornadas([]);
             setStatsCache({});
             setIsLoading(true);
+            setDb(null); // Aseguramos que el db se limpia
         }
       });
       
@@ -237,6 +243,7 @@ function App() {
       setError("Error crítico al inicializar Firebase. Revise su configuración.");
       setIsLoading(false);
       setIsAuthReady(true);
+      setDb(null);
     }
   }, []);
 
@@ -341,6 +348,8 @@ function App() {
                 jornadas={jornadas}
                 isLoading={isLoading}
                 statsCache={statsCache}
+                isSuperUser={isSuperUser}
+                db={db} // 🔑 CAMBIO 3: Pasamos la instancia de Firestore (db) como prop
               />
             }
           />

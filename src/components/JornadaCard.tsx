@@ -146,7 +146,7 @@ const JornadaCard: React.FC<JornadaCardProps> = ({ jornada }) => {
             {/* Contenido del Acordeón (Lista de Partidos) */}
             <div
                 id={`content-${jornada.id}`}
-                className={`transition-all duration-300 ease-in-out ${isOpen ? 'max-h-screen opacity-100' : 'max-h-0 opacity-0'}`}
+                className={`transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[9999px] opacity-100' : 'max-h-0 opacity-0'}`}
                 style={{ overflow: 'hidden' }} // Asegura que se oculte correctamente
             >
                 <div className="border-t border-gray-200">

@@ -2,11 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 // Importaciones de Firebase
-// 🔑 CAMBIO: Solo necesitamos importar los tipos y los helpers de Firestore,
-// ya que la inicialización se hace en App.tsx.
-import { getFirestore, Firestore } from 'firebase/firestore'; 
-import { initializeApp } from 'firebase/app'; // Mantenemos la importación por si hay uso indirecto de config, pero el código la elimina.
-import { getAuth, signInAnonymously, signInWithCustomToken } from 'firebase/auth'; // Eliminamos las imports de Auth
+// 🔑 CORREGIDO: Solo importamos el tipo 'Firestore', que sí se usa como prop.
+import type { Firestore } from 'firebase/firestore'; 
 
 // Importamos tipos y el Modal
 import type { JornadaData, Partido, Planeacion, StatsCache } from '../App';
@@ -14,22 +11,20 @@ import EditMatchModal from './EditMatchModal';
 
 
 // ====================================================================
-// DECLARACIÓN DE VARIABLES GLOBALES
-// 🔑 NOTA: Dejamos las declaraciones globales, pero ELIMINAMOS la lógica 
-// de autenticación en el componente.
+// DECLARACIÓN DE VARIABLES GLOBALES (Se mantienen, aunque solo se usa appId)
 // ====================================================================
 declare const __firebase_config: string | undefined;
 declare const __initial_auth_token: string | null | undefined;
 declare const __app_id: string | undefined; 
 
-const JORNADAS_COLLECTION = 'jornadas';
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-// Usamos getJornadasCollectionPath para eliminar el warning ts(6133)
-const getJornadasCollectionPath = () => `artifacts/${appId}/public/data/${JORNADAS_COLLECTION}`; 
+
+
+// ❌ CORREGIDO: Eliminamos o comentamos funciones auxiliares no usadas.
+// const getJornadasCollectionPath = () => `artifacts/${appId}/public/data/${JORNADAS_COLLECTION}`; 
 
 
 // ====================================================================
-// ÍCONOS SVG INLINE
+// ÍCONOS SVG INLINE (Se mantiene sin cambios)
 // ====================================================================
 const SvgIcon = ({ path, className = 'w-5 h-5', style = {} }: { path: string, className?: string, style?: React.CSSProperties }) => (
     <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -47,7 +42,7 @@ const AlertCircleIcon = (props: any) => (<SvgIcon path="M12 2C6.477 2 2 6.477 2 
 
 
 // ====================================================================
-// INTERFACES Y CONSTANTES
+// INTERFACES Y CONSTANTES (Se mantiene sin cambios)
 // ====================================================================
 
 interface PartidoData extends Partido {
@@ -74,9 +69,8 @@ interface FullJornadaData extends JornadaData {
 const API_BASE_URL = 'https://planeador-partidos-backend.vercel.app';
 
 
-// ====================================================================
-// FUNCIÓN DE CONFIGURACIÓN DE FIREBASE (MANTENIDA PERO NO USADA)
-// ====================================================================
+// ❌ CORREGIDO: Eliminamos esta función no utilizada (TS6133)
+/*
 const getFirebaseConfig = () => {
     if (typeof __firebase_config !== 'undefined' && __firebase_config) {
         try {
@@ -87,23 +81,23 @@ const getFirebaseConfig = () => {
     }
     return {};
 };
+*/
 
 
 // ====================================================================
-// DEFINICIÓN DE PROPS
+// DEFINICIÓN DE PROPS (Se mantiene sin cambios)
 // ====================================================================
 interface PartidoDetailProps {
     jornadas: JornadaData[];
     isLoading: boolean;
     statsCache: StatsCache;
     isSuperUser: boolean;
-    // 🔑 CAMBIO 1: Agregamos la prop 'db' que viene desde App.tsx
     db: Firestore | null; 
 }
 
 
 // ====================================================================
-// FUNCIÓN: Normaliza texto para comparación robusta.
+// FUNCIÓN: Normaliza texto para comparación robusta. (Se mantiene sin cambios)
 // ====================================================================
 const normalizeText = (text: string) =>
     text.toLowerCase()
@@ -113,7 +107,7 @@ const normalizeText = (text: string) =>
         .replace('quense', 'quence');
 
 // ====================================================================
-// FUNCIÓN CLAVE: Extrae solo los dígitos del año.
+// FUNCIÓN CLAVE: Extrae solo los dígitos del año. (Se mantiene sin cambios)
 // ====================================================================
 const extractYearFromCategory = (category: string): string => {
     const match = String(category).trim().match(/^(\d{4})/);
@@ -122,18 +116,13 @@ const extractYearFromCategory = (category: string): string => {
 
 
 // ====================================================================
-// COMPONENTE PRINCIPAL
+// COMPONENTE PRINCIPAL (Se mantiene sin cambios)
 // ====================================================================
 
-// 🔑 CAMBIO 2: Desestructuramos 'db' directamente de props
 const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAppLoading, statsCache, isSuperUser, db }) => {
 
     const { partidoId: idRutaCompleto } = useParams<{ partidoId: string }>();
     const navigate = useNavigate();
-
-    // 🔑 CAMBIO 3: Eliminamos el estado local de Auth y DB
-    // const [isAuthReady, setIsAuthReady] = useState(false); 
-    // const [db, setDb] = useState<Firestore | null>(null); 
 
     // 2. Descomponer el ID de la ruta
     const [jornadaId, setJornadaId] = useState<string | null>(null);
@@ -154,50 +143,7 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
     const [sancionados, setSancionados] = useState<Sancion[]>([]);
 
 
-    // 🔑 CAMBIO 4: Eliminamos el EFECTO 1 de inicialización de Auth y DB
-    /* useEffect(() => {
-        const firebaseConfig = getFirebaseConfig();
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        if (!Object.keys(firebaseConfig).length) {
-            console.error("Firebase config is missing.");
-            setError("Error: La configuración de Firebase no está disponible.");
-            setIsAuthReady(true);
-            return;
-        }
-
-        try {
-            const app = initializeApp(firebaseConfig);
-            const auth = getAuth(app);
-            const firestore = getFirestore(app); 
-            setDb(firestore); 
-
-            const authenticate = async () => {
-                try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                } catch (authError) {
-                    console.error("Error during authentication, falling back to anonymous:", authError);
-                    await signInAnonymously(auth);
-                } finally {
-                    setIsAuthReady(true); // Se usa aquí
-                }
-            };
-            authenticate();
-
-        } catch (e) {
-            console.error("Error al inicializar Firebase:", e);
-            setError("Error crítico al inicializar Firebase.");
-            setIsAuthReady(true);
-        }
-    }, []);
-    */
-
-
-    // --- EFECTOS 2 y 3 (Descomponer ID y Buscar Partido) SIN CAMBIOS ---
+    // --- EFECTOS (Se mantienen sin cambios) ---
     useEffect(() => {
         if (idRutaCompleto) {
             const parts = idRutaCompleto.split('-');
@@ -372,11 +318,9 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
 
 
     // *************************************************************
-    // RENDERIZADO
+    // RENDERIZADO (Se mantiene sin cambios)
     // *************************************************************
 
-    // 🔑 CAMBIO 5: Cambiamos la condición de carga. Ahora depende de isAppLoading (de App.tsx)
-    // y asumimos que la Auth ya está lista si estamos en esta vista (porque App.tsx lo maneja).
     if (isAppLoading) { 
         return <div className="p-8 text-center bg-gray-100 min-h-screen flex items-center justify-center">
             <PulseIcon className="text-emerald-500 w-10 h-10 animate-spin mr-3" />
@@ -615,10 +559,7 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                 ID de Jornada: {jornadaId || 'N/A'} | Índice de Partido: {partidoIndex}
             </p>
 
-            {/* 🛑 RENDERIZADO DEL MODAL 🛑
-            // 🔑 CAMBIO 6: El modal se renderiza si db NO es null, lo que ahora es 
-            // controlado por el éxito de la inicialización en App.tsx.
-            */}
+            {/* 🛑 RENDERIZADO DEL MODAL 🛑 */}
             {isSuperUser && partidoData && jornadaId && partidoIndex !== null && db && (
                 <EditMatchModal
                     isOpen={isEditModalOpen}

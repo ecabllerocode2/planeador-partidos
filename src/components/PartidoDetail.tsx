@@ -69,20 +69,6 @@ interface FullJornadaData extends JornadaData {
 const API_BASE_URL = 'https://planeador-partidos-backend.vercel.app';
 
 
-// ❌ CORREGIDO: Eliminamos esta función no utilizada (TS6133)
-/*
-const getFirebaseConfig = () => {
-    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-        try {
-            return JSON.parse(__firebase_config);
-        } catch (e) {
-            console.error("Error al parsear __firebase_config.");
-        }
-    }
-    return {};
-};
-*/
-
 
 // ====================================================================
 // DEFINICIÓN DE PROPS (Se mantiene sin cambios)
@@ -142,6 +128,8 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
     // ESTADO: Lista de jugadores sancionados para este partido
     const [sancionados, setSancionados] = useState<Sancion[]>([]);
 
+    const [jornadaPartidos, setJornadaPartidos] = useState<Partido[]>([]);
+
 
     // --- EFECTOS (Se mantienen sin cambios) ---
     useEffect(() => {
@@ -167,7 +155,10 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
             const jornada = jornadas.find(j => j.id === jornadaId);
 
             if (jornada) {
-                const partido = jornada.partidos[partidoIndex];
+                const partidosArray = jornada.partidos;
+                setJornadaPartidos(partidosArray); // 🎯 GUARDAMOS EL ARRAY COMPLETO
+
+                const partido = partidosArray[partidoIndex];
 
                 if (partido) {
                     setPartidoData(partido as PartidoData);
@@ -175,13 +166,16 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                 } else {
                     setError(`Error: El partido con índice ${partidoIndex} no existe en la jornada.`);
                     setPartidoData(null);
+                    setJornadaPartidos([]);
                 }
             } else {
                 setError(`Error: Documento de Jornada ${jornadaId} no encontrado en la lista principal.`);
                 setPartidoData(null);
+                setJornadaPartidos([]);
             }
         } else if (jornadaId === null && partidoIndex === null) {
             setPartidoData(null);
+            setJornadaPartidos([]);
         }
 
     }, [isAppLoading, jornadas, jornadaId, partidoIndex]);
@@ -569,6 +563,7 @@ const PartidoDetail: React.FC<PartidoDetailProps> = ({ jornadas, isLoading: isAp
                     partidoIndex={partidoIndex}
                     db={db}
                     setMainError={setError}
+                    todosLosPartidosDeLaJornada={jornadaPartidos}
                 />
             )}
 

@@ -12,7 +12,7 @@ import StatsView from './components/StatsView';
 // Importaciones de Firebase
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, type User } from 'firebase/auth'; 
-import { getFirestore, collection, onSnapshot, query, orderBy, type DocumentData, getDocs, type Firestore } from 'firebase/firestore'; // 👈 Importamos Firestore type
+import { getFirestore, collection, onSnapshot, query, orderBy, type DocumentData, getDocs, type Firestore } from 'firebase/firestore'; 
 
 // Importaciones de React Icons
 import { IoMdAddCircle } from "react-icons/io";
@@ -21,23 +21,19 @@ import { IoFootball } from "react-icons/io5";
 import LoginView from './components/LoginView'; 
 
 // ====================================================================
-// DECLARACIÓN DE VARIABLES GLOBALES
+// DECLARACIÓN DE VARIABLES GLOBALES e INTERFACES
 // ====================================================================
+
 declare const __firebase_config: string | undefined;
 declare const __initial_auth_token: string | null | undefined;
 
 // *******************************************************************
 // 🔑 PASO 1: DEFINE TU UID DE ADMINISTRADOR AQUÍ
-// REEMPLAZA "TU_UID_ADMINISTRADOR_AQUI" con tu UID real de Firebase.
 // *******************************************************************
 const ADMIN_UID = "1C6xrXnZiJgfb1CUCrHSvbyd1om1"; 
 // *******************************************************************
 
-
-// ====================================================================
-// INTERFACES
-// ====================================================================
-
+// INTERFACES (Dejamos las interfaces fuera para que el código sea 100% copiable)
 export interface Planeacion {
   id_planeacion: string;
   arbitro_creador: string;
@@ -92,8 +88,6 @@ export interface StatsCache {
 const JORNADAS_COLLECTION = 'jornadas';
 const STATS_COLLECTION = 'stats_cache';
 
-// ====================================================================
-
 // FUNCIÓN DE CONFIGURACIÓN DE FIREBASE 
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -128,7 +122,6 @@ function App() {
   const [statsCache, setStatsCache] = useState<StatsCache>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // 🔑 CAMBIO 1: El estado de Firestore se mueve a App.tsx
   const [db, setDb] = useState<Firestore | null>(null); 
 
   // ESTADOS DE AUTENTICACIÓN
@@ -145,12 +138,10 @@ function App() {
   const isHome = location.pathname === '/';
   const showFabAndFooter = isHome || location.pathname === '/stats';
 
-  // 🔑 PASO 2: LÓGICA DE SUPERUSUARIO
   const isSuperUser = useMemo(() => user?.uid === ADMIN_UID, [user]);
 
-  // --- EFECTO: Inicialización de Firebase, Auth Listener y Carga de Datos ---
+  // --- EFECTO 1: Inicialización de Firebase y Auth Listener (Solo Auth) ---
   useEffect(() => {
-    let unsubscribeJornadas: () => void;
     const firebaseConfig = getFirebaseConfig();
 
     if (!firebaseConfig || !firebaseConfig.apiKey) {
@@ -160,28 +151,45 @@ function App() {
       return;
     }
 
-    let firestoreInstance: Firestore; // Renombramos para evitar conflicto con el estado local
-
     try {
       const app = initializeApp(firebaseConfig);
-      // 🔑 CAMBIO 2: Inicializamos Firestore aquí y lo guardamos en el estado
-      firestoreInstance = getFirestore(app); 
-      setDb(firestoreInstance); 
-      
+      // Inicializamos Firestore y lo guardamos
+      setDb(getFirestore(app)); 
       const auth = getAuth(app);
 
       // 1. Listener de Autenticación
       const unsubscribeAuth = onAuthStateChanged(auth, (authUser) => {
         setUser(authUser);
         setIsAuthReady(true);
+      });
+      
+      // 2. Limpieza
+      return () => unsubscribeAuth();
 
-        // 2. Carga de JORNADAS y STATS (solo si hay un usuario logueado)
-        if (authUser) {
-          // Listener para JORNADAS
-          const jornadasCollectionRef = collection(firestoreInstance, JORNADAS_COLLECTION); // Usamos firestoreInstance
-          const q = query(jornadasCollectionRef, orderBy('fechaExtraccion', 'desc'));
+    } catch (e) {
+      console.error("Error al inicializar Firebase:", e);
+      setError("Error crítico al inicializar Firebase. Revise su configuración.");
+      setIsLoading(false);
+      setIsAuthReady(true);
+      setDb(null);
+    }
+  }, []); // Se ejecuta solo una vez al montar
 
-          unsubscribeJornadas = onSnapshot(q, (snapshot) => {
+  
+  // --- EFECTO 2: Carga de Datos (Depende de 'user' y 'db') ---
+  useEffect(() => {
+    let unsubscribeJornadas: () => void | undefined;
+
+    // Solo procede si el usuario está logueado y la DB está disponible
+    if (user && db) { 
+        setIsLoading(true);
+        setError(null);
+
+        // 1. Listener para JORNADAS
+        const jornadasCollectionRef = collection(db, JORNADAS_COLLECTION);
+        const q = query(jornadasCollectionRef, orderBy('fechaExtraccion', 'desc'));
+
+        unsubscribeJornadas = onSnapshot(q, (snapshot) => {
             const fetchedJornadas: JornadaData[] = [];
             snapshot.forEach(doc => {
               const data = doc.data() as DocumentData;
@@ -198,54 +206,42 @@ function App() {
 
             setJornadas(fetchedJornadas);
             setIsLoading(false);
-            setError(null);
-          }, (err) => {
+            setError(null); 
+        }, (err) => {
             console.error("Firestore Listener Error (Jornadas):", err);
             setError(`Error al cargar las jornadas: ${err.message}`);
             setIsLoading(false);
-          });
-          
-          // Carga Única de la Colección STATS_CACHE
-          const loadStatsCache = async () => {
-              try {
-                  const statsCollectionRef = collection(firestoreInstance, STATS_COLLECTION); // Usamos firestoreInstance
-                  const statsSnapshot = await getDocs(statsCollectionRef);
-                  const cache: StatsCache = {};
-                  statsSnapshot.forEach(doc => {
-                      cache[doc.id] = doc.data() as StatsCache[string];
-                  });
-                  setStatsCache(cache);
-              } catch(err) {
-                  console.error("Error al cargar StatsCache:", err);
-              }
-          };
-          loadStatsCache();
+        });
+        
+        // 2. Carga Única de la Colección STATS_CACHE
+        const loadStatsCache = async () => {
+            try {
+                const statsCollectionRef = collection(db, STATS_COLLECTION);
+                const statsSnapshot = await getDocs(statsCollectionRef);
+                const cache: StatsCache = {};
+                statsSnapshot.forEach(doc => {
+                    cache[doc.id] = doc.data() as StatsCache[string];
+                });
+                setStatsCache(cache);
+            } catch(err) {
+                console.error("Error al cargar StatsCache:", err);
+            }
+        };
+        loadStatsCache();
+    } else {
+        // Limpia el estado si el usuario no está logueado
+        setJornadas([]);
+        setStatsCache({});
+        setIsLoading(true);
+    }
 
-        } else {
-            // Si el usuario se desloguea, limpiamos los datos
-            setJornadas([]);
-            setStatsCache({});
-            setIsLoading(true);
-            setDb(null); // Aseguramos que el db se limpia
-        }
-      });
-      
-      // 3. Limpieza
-      return () => {
+    // 3. Limpieza del listener
+    return () => {
         if (unsubscribeJornadas) {
             unsubscribeJornadas();
         }
-        unsubscribeAuth();
-      };
-
-    } catch (e) {
-      console.error("Error al inicializar Firebase:", e);
-      setError("Error crítico al inicializar Firebase. Revise su configuración.");
-      setIsLoading(false);
-      setIsAuthReady(true);
-      setDb(null);
-    }
-  }, []);
+    };
+  }, [user, db]); // Se ejecuta cada vez que 'user' o 'db' cambia
 
 
   // --- MANEJO DE VISTAS (LOGIN VS APP COMPLETA) ---
@@ -287,6 +283,7 @@ function App() {
   const handleLogoutLocal = () => {
     setUser(null); 
     setAuthError(null);
+    // El useEffect de carga de datos limpia el resto del estado al ver que user es null
   };
 
 
@@ -325,7 +322,6 @@ function App() {
                 <div className="p-8 text-center bg-white rounded-lg shadow-sm text-gray-500">
                   <IoFootball className="w-12 h-12 mx-auto text-gray-300 mb-2" />
                   <p className='font-semibold'>No hay jornadas cargadas.</p>
-                  {/* PASO 3: Renderizado condicional del mensaje para superusuario */}
                   {isSuperUser && (
                      <p className='text-sm'>Presiona el botón (+) para subir un archivo de partidos.</p>
                   )}
@@ -349,7 +345,7 @@ function App() {
                 isLoading={isLoading}
                 statsCache={statsCache}
                 isSuperUser={isSuperUser}
-                db={db} // 🔑 CAMBIO 3: Pasamos la instancia de Firestore (db) como prop
+                db={db}
               />
             }
           />
@@ -363,7 +359,7 @@ function App() {
         </Routes>
       </main>
 
-      {/* 🔑 PASO 3: FAB solo se muestra si el usuario está en HOME y es SUPERUSER */}
+      {/* FAB (Botón de Acción Flotante) */}
       {isHome && isSuperUser && (
         <button
           onClick={openModal}
@@ -380,7 +376,7 @@ function App() {
         <Footer currentPath={location.pathname} />
       )}
 
-      {/* 🔑 PASO 3: Modal solo se renderiza si es SUPERUSER y está abierto */}
+      {/* Modal de Subida de Archivos */}
       {isSuperUser && (
         <ModalSubidaArchivos
           isOpen={isModalOpen}
